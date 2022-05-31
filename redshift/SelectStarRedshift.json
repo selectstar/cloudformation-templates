@@ -1,0 +1,475 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Stack to enable integration SelectStar with Redshift",
+    "Parameters": {
+        "Cluster": {
+            "Type": "String",
+            "AllowedPattern": "[\\w-]+",
+            "Description": "Also known as \"Cluster identifier\" by AWS."
+        },
+        "Db": {
+            "Description": "Comma separated list of Redshift database to grant access for Select Star.",
+            "Type": "CommaDelimitedList"
+        },
+        "DbUser": {
+            "Type": "String",
+            "Default": "awsuser",
+            "Description": "Redshift user used to connection for provision access for Select Star. This user is used only by CloudFormation for the purposes of eg. creating a user account with minimal rights, including without access to data necessary for integration.",
+            "AllowedPattern": ".+"
+        },
+        "ExternalId": {
+            "Description": "The Select Star external ID to authenticate your AWS account. Do not change or share this.",
+            "MinLength": "1",
+            "Type": "String"
+        },
+        "IamPrincipal": {
+            "Description": "The Select Star IAM principal which has permission to your AWS account. Do not change this.",
+            "MinLength": "1",
+            "Type": "String"
+        },
+        "ConfigureS3Logging": {
+            "Type": "String",
+            "AllowedValues": [
+                "true",
+                "false"
+            ],
+            "Description": "If true and S3 logging disabled then the Redshift cluster configuration can be changed to enable S3 logging. It is recommended to set the value \"true\"."
+        },
+        "ConfigureS3LoggingRestart": {
+            "Type": "String",
+            "AllowedValues": [
+                "true",
+                "false"
+            ],
+            "Description": "If true and logging changes made then the Redshift cluster can be restarted to apply changes. It is recommended to set the value \"true\"."
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Redshift configuration"
+                    },
+                    "Parameters": [
+                        "Cluster",
+                        "Db",
+                        "DbUser"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Provisioning"
+                    },
+                    "Parameters": [
+                        "ConfigureS3Logging",
+                        "ConfigureS3LoggingRestart"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Read-only. Do not change this."
+                    },
+                    "Parameters": [
+                        "ExternalId",
+                        "IamPrincipal"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "Cluster": {
+                    "default": "Redshift cluster name"
+                },
+                "Db": {
+                    "default": "Redshift databases"
+                },
+                "ConfigureS3Logging": {
+                    "default": "Configure S3 logging (if disabled)"
+                },
+                "ConfigureS3LoggingRestart": {
+                    "default": "Restart Cluster (if necessary to apply changes)"
+                }
+            }
+        }
+    },
+    "Conditions": {
+        "CreateS3Bucket": {
+            "Fn::Equals": [
+                {
+                    "Ref": "ConfigureS3Logging"
+                },
+                "true"
+            ]
+        }
+    },
+    "Resources": {
+        "LoggingBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Condition": "CreateS3Bucket",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "AccessControl": "Private",
+                "PublicAccessBlockConfiguration": {
+                    "BlockPublicAcls": true,
+                    "BlockPublicPolicy": true,
+                    "IgnorePublicAcls": true,
+                    "RestrictPublicBuckets": true
+                }
+            }
+        },
+        "LoggingBucketPolicy": {
+            "Type": "AWS::S3::BucketPolicy",
+            "Condition": "CreateS3Bucket",
+            "Properties": {
+                "Bucket": {
+                    "Ref": "LoggingBucket"
+                },
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "LoggingBucket"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "LoggingBucket"
+                                            },
+                                            "/*"
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Principal": {
+                                "Service": "redshift.amazonaws.com"
+                            },
+                            "Action": [
+                                "s3:PutObject",
+                                "s3:GetBucketAcl"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "aws:SourceArn": {
+                                        "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "CrossAccountRolePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "redshift:ListSchemas",
+                                "redshift:ListTables",
+                                "redshift:ListDatabases",
+                                "redshift:ExecuteQuery",
+                                "redshift:FetchResults",
+                                "redshift:DescribeClusters",
+                                "redshift:CancelQuery",
+                                "redshift:DescribeQuery",
+                                "redshift:DescribeTable",
+                                "redshift:ViewQueriesFromConsole"
+                            ],
+                            "Resource": {
+                                "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}"
+                            }
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "redshift:GetClusterCredentials"
+                            ],
+                            "Resource": {
+                                "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${Cluster}/selectstar"
+                            }
+                        },
+                        {
+                            "Sid": "DataAPIPermissions",
+                            "Action": [
+                                "redshift-data:ExecuteStatement",
+                                "redshift-data:ListDatabases",
+                                "redshift-data:ListSchemas",
+                                "redshift-data:ListTables",
+                                "redshift-data:DescribeTable"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": {
+                                "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}"
+                            }
+                        },
+                        {
+                            "Sid": "DataAPIIAMSessionPermissionsRestriction",
+                            "Action": [
+                                "redshift-data:GetStatementResult",
+                                "redshift-data:CancelStatement",
+                                "redshift-data:DescribeStatement",
+                                "redshift-data:ListStatements"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": "*"
+                        },
+                        {
+                            "Sid": "ListObjectsInBucket",
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:GetLifecycleConfiguration",
+                                "s3:GetBucketTagging",
+                                "s3:GetInventoryConfiguration",
+                                "s3:GetObjectVersionTagging",
+                                "s3:ListBucketVersions",
+                                "s3:GetBucketLogging",
+                                "s3:GetBucketPolicy",
+                                "s3:GetBucketOwnershipControls",
+                                "s3:GetBucketPublicAccessBlock",
+                                "s3:GetBucketPolicyStatus",
+                                "s3:ListBucketMultipartUploads",
+                                "s3:GetBucketVersioning",
+                                "s3:GetBucketAcl",
+                                "s3:ListMultipartUploadParts",
+                                "s3:GetObject",
+                                "s3:GetBucketLocation",
+                                "s3:GetObjectVersion"
+                            ],
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Fn::GetAtt": [
+                                                    "LambdaProvision",
+                                                    "LoggingBucket"
+                                                ]
+                                            }
+                                        ]
+                                    ]
+                                },
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Fn::GetAtt": [
+                                                    "LambdaProvision",
+                                                    "LoggingBucket"
+                                                ]
+                                            },
+                                            "/*"
+                                        ]
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "PolicyName": "EnableSelectStar",
+                "Roles": [
+                    {
+                        "Ref": "CrossAccountRole"
+                    }
+                ]
+            }
+        },
+        "CrossAccountRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": {
+                                    "Ref": "IamPrincipal"
+                                }
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "sts:ExternalId": {
+                                        "Ref": "ExternalId"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "LambdaRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "lambda.amazonaws.com"
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Policies": [
+                    {
+                        "PolicyName": "RedshiftAccess",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "redshift:*",
+                                        "redshift-data:*"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${Cluster}/${DbUser}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${Cluster}/*"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}"
+                                        },
+                                        {
+                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:parametergroup:*"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "redshift-data:DescribeStatement",
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:PassRole"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                ]
+            }
+        },
+        "LambdaFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Timeout": 300,
+                "Code": {
+                    "ZipFile": "import json\nimport boto3\nimport logging\nimport time\nimport urllib3\nimport cfnresponse\nimport botocore\nimport boto3\n\nlogging.basicConfig()\nlogging.basicConfig(\n    format=\"%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s\",\n    datefmt=\"%Y-%m-%d:%H:%M:%S\",\n    level=logging.DEBUG,\n)\n\nUSER_ACTIVITY = \"enable_user_activity_logging\"\n\nlogger = logging.getLogger(__name__)\nlogger.setLevel(logging.INFO)\n\nhttp = urllib3.PoolManager()\nredshiftdata_client = boto3.client(\"redshift-data\")\nredshift_client = boto3.client(\"redshift\")\ns3_client = boto3.client(\"s3\")\n\n\nclass DataException(Exception):\n    pass\n\n\ndef retry_aws(retries=3, codes=[]):\n    def outer(fn):\n        def inner(*args, **kwargs):\n            error = None\n            for i in range(0, retries):\n                try:\n                    return fn(*args, **kwargs)\n                except botocore.exceptions.ClientError as err:\n                    if err.response[\"Error\"][\"Code\"] in codes:\n                        error = err\n                        time.sleep(2**i)\n                        logger.warn(\n                            f\"API call failed ({err}); backing off and retrying...\"\n                        )\n                    else:\n                        raise err\n            raise error\n\n        return inner\n\n    return outer\n\n\ndef execQuery(cluster, db, user, statement):\n    try:\n        response = redshiftdata_client.execute_statement(\n            ClusterIdentifier=cluster, Database=db, DbUser=user, Sql=statement\n        )\n        response = redshiftdata_client.describe_statement(Id=response[\"Id\"])\n\n        while response[\"Status\"] in [\"SUBMITTED\", \"PICKED\", \"STARTED\"]:\n            time.sleep(2)\n            response = redshiftdata_client.describe_statement(Id=response[\"Id\"])\n        if response[\"HasResultSet\"]:\n            response[\"Records\"] = redshiftdata_client.get_statement_result(\n                Id=response[\"Id\"]\n            )[\"Records\"]\n        print(\"Finished: \" + statement)\n        if response[\"Status\"] != \"FINISHED\":\n            raise DataException(\"Failed SQL: \" + str(response[\"Error\"]))\n        return response\n    except Exception as e:\n        print(\"Failed Exec Query:\", e)\n        raise e\n\n\ndef ensure_iam_role(cluster, role):\n    redshift_client.modify_cluster_iam_roles(\n        ClusterIdentifier=cluster, AddIamRoles=[role]\n    )\n    waiter = redshift_client.get_waiter(\"cluster_available\")\n    waiter.wait(ClusterIdentifier=cluster)\n\n\ndef ensure_logging_enabled(cluster, configureS3Logging, bucket):\n    logging_status = redshift_client.describe_logging_status(\n        ClusterIdentifier=cluster,\n    )\n    print(\"Logging status:\", logging_status)\n    if logging_status[\"LoggingEnabled\"]:  # eg. user already configured s3 logging\n        if \"BucketName\" in logging_status:  # eg. use custom s3 bucket active\n            logging_bucket = logging_status[\"BucketName\"]\n        else:  # eg. user have CloudWatch as destination activated\n            raise DataException(\n                \"Configure S3 logging failed. Another destination of logging active.\"\n            )\n    elif configureS3Logging:\n        redshift_client.enable_logging(\n            ClusterIdentifier=cluster,\n            BucketName=bucket,\n            S3KeyPrefix=f\"redshift-logs/{cluster}\",\n        )\n        waiter = redshift_client.get_waiter(\"cluster_available\")\n        waiter.wait(ClusterIdentifier=cluster)\n        logging_bucket = bucket\n    else:\n        raise DataException(\n            \"Configure logging failed.\"\n            \"Logging in to S3 must be accepted in CloudFormation or setup manually.\"\n        )\n    return logging_bucket\n\n\n@retry_aws(codes=[\"InvalidClusterParameterGroupState\"])\ndef ensure_custom_parameter_group(cluster):\n    cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[\n        \"Clusters\"\n    ][0]\n    parameter_group_name = cluster_description[\"ClusterParameterGroups\"][0][\n        \"ParameterGroupName\"\n    ]\n    print(\"Current parameter group name\", parameter_group_name)\n    if parameter_group_name.startswith(\"default.\"):\n        parameter_group = redshift_client.describe_cluster_parameter_groups(\n            ParameterGroupName=parameter_group_name\n        )[\"ParameterGroups\"][0]\n        custom_parameter_group = f\"redshift-custom-{cluster}\"\n        redshift_client.create_cluster_parameter_group(\n            ParameterGroupName=custom_parameter_group,\n            ParameterGroupFamily=parameter_group[\"ParameterGroupFamily\"],\n            Description=\"Created by CloudFormation on provisioning Select Star\",\n        )\n        print(f\"Custom parameter group created: {custom_parameter_group}\")\n        redshift_client.modify_cluster(\n            ClusterIdentifier=cluster,\n            ClusterParameterGroupName=custom_parameter_group,\n        )\n        print(f\"Custom parameter set for cluster: {custom_parameter_group}\")\n        waiter = redshift_client.get_waiter(\"cluster_available\")\n        waiter.wait(ClusterIdentifier=cluster)\n\n\n@retry_aws(codes=[\"InvalidClusterParameterGroupState\"])\ndef ensure_user_activity_enabled(cluster):\n    cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[\n        \"Clusters\"\n    ][0]\n    parameter_group = cluster_description[\"ClusterParameterGroups\"][0][\n        \"ParameterGroupName\"\n    ]\n    print(\"Parameter group:\", parameter_group)\n    paginator = redshift_client.get_paginator(\"describe_cluster_parameters\")\n    enabled = any(\n        parameter[\"ParameterName\"] == USER_ACTIVITY\n        and parameter[\"ParameterValue\"] == \"true\"\n        for resp in paginator.paginate(ParameterGroupName=parameter_group)\n        for parameter in resp[\"Parameters\"]\n    )\n    if not enabled:\n        redshift_client.modify_cluster_parameter_group(\n            ParameterGroupName=parameter_group,\n            Parameters=[\n                {\n                    \"ParameterName\": USER_ACTIVITY,\n                    \"ParameterValue\": \"true\",\n                }\n            ],\n        )\n        print(\"Parameter group updated to set parameter:\", USER_ACTIVITY)\n    waiter = redshift_client.get_waiter(\"cluster_available\")\n    waiter.wait(ClusterIdentifier=cluster)\n\n\ndef ensure_cluster_restarted(cluster):\n    cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[\n        \"Clusters\"\n    ][0]\n    pending_reboot = any(\n        param[\"ParameterName\"] == USER_ACTIVITY\n        and param[\"ParameterApplyStatus\"] == \"pending-reboot\"\n        for group in cluster_description[\"ClusterParameterGroups\"]\n        for param in group[\"ClusterParameterStatusList\"]\n    )\n    if pending_reboot:\n        redshift_client.reboot_cluster(ClusterIdentifier=cluster)\n        waiter = redshift_client.get_waiter(\"cluster_available\")\n        waiter.wait(ClusterIdentifier=cluster)\n\n\ndef handler(event, context):\n    logger.info(json.dumps(event))\n    try:\n        properties = event[\"ResourceProperties\"]\n        role = properties[\"RedshiftRole\"]\n        cluster = properties[\"Cluster\"]\n        bucket = properties[\"Bucket\"]\n        db = properties[\"Db\"]\n        dbUser = properties[\"DbUser\"]\n        configureS3Logging = properties[\"ConfigureS3Logging\"] == \"true\"\n        configureS3LoggingRestart = properties[\"ConfigureS3LoggingRestart\"] == \"true\"\n\n        if event[\"RequestType\"] == \"Delete\":\n            try:\n                # TODO: drop permission on object\n                execQuery(cluster, db[0], dbUser, \"drop user selectstar;\")\n            except Exception as e:\n                print(\"User could not be removed\")\n\n            try:\n                redshift_client.modify_cluster_iam_roles(\n                    ClusterIdentifier=cluster, RemoveIamRoles=[role]\n                )\n                print(\"Cluster IAM role removed:\", role)\n                waiter = redshift_client.get_waiter(\"cluster_available\")\n                waiter.wait(ClusterIdentifier=cluster)\n            except Exception as e:\n                print(\"Role could not be removed\")\n\n            cfnresponse.send(\n                event, context, cfnresponse.SUCCESS, {\"Data\": \"Delete complete\"}\n            )\n        else:\n            try:\n                ensure_iam_role(cluster, role)\n            except Exception as e:\n                logger.error(e)\n                raise DataException(\"Configure IAM role failed\")\n            print(\"IAM role configured successfully\")\n            # Configure S3 logging for Redshift\n            try:\n                logging_bucket = ensure_logging_enabled(\n                    cluster, configureS3Logging, bucket\n                )\n            except DataException:\n                raise\n            except Exception as e:\n                logger.error(e)\n                raise DataException(\"Configure logging failed\")\n            print(\"S3 logging configured successfully\")\n\n            try:\n                ensure_custom_parameter_group(cluster)\n            except DataException:\n                raise\n            except Exception as e:\n                logger.error(e)\n                raise DataException(\"Ensure custom parameter group failed\")\n\n            try:\n                ensure_user_activity_enabled(cluster)\n            except DataException:\n                raise\n            except Exception as e:\n                logger.error(e)\n                raise DataException(\"Ensure user activity enabled failed\")\n\n            if configureS3LoggingRestart:\n                ensure_cluster_restarted(cluster)\n            print(\"User audit logging configured successfully\")\n\n            try:\n                try:\n                    user_stmt = \"create user selectstar with password disable syslog access unrestricted;\"\n                    execQuery(\n                        cluster,\n                        db[0],\n                        dbUser,\n                        user_stmt,\n                    )\n                except Exception as e:\n                    logger.warn(\n                        f\"Ignore failure on user creation. Most likely user already exist\"\n                    )\n                    pass\n                    # ignore failure that user exist\n                for dbname in db:\n                    for statement in [\n                        \"grant select on SVV_TABLE_INFO to selectstar;\",\n                        \"grant select on SVV_TABLES to selectstar;\",\n                        \"grant select on SVV_COLUMNS to selectstar;\",\n                        \"grant select on STL_QUERYTEXT to selectstar;\",\n                        \"grant select on STL_DDLTEXT to selectstar;\",\n                        \"grant select on STL_QUERY to selectstar;\",\n                    ]:\n                        execQuery(cluster, dbname, dbUser, statement)\n            except DataException:\n                raise\n            except Exception as e:\n                logger.error(e)\n                return cfnresponse.send(\n                    event,\n                    context,\n                    cfnresponse.FAILED,\n                    {},\n                    reason=\"Execute query failed. See the details in CloudWatch Log Stream: {}\".format(\n                        str(e), context.log_stream_name\n                    ),\n                )\n            return cfnresponse.send(\n                event,\n                context,\n                cfnresponse.SUCCESS,\n                {\"LoggingBucket\": logging_bucket},\n                reason=\"Create complete\",\n            )\n    except DataException as e:\n        return cfnresponse.send(\n            event,\n            context,\n            cfnresponse.FAILED,\n            {},\n            reason=\"{}. See the details in CloudWatch Log Stream: {}\".format(\n                str(e), context.log_stream_name\n            ),\n        )\n    except Exception as e:\n        logging.error(e)\n        return cfnresponse.send(\n            event,\n            context,\n            cfnresponse.FAILED,\n            {},\n            reason=\"Something failed. See the details in CloudWatch Log Stream: {}\".format(\n                context.log_stream_name\n            ),\n        )\n"
+                },
+                "Handler": "index.handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "LambdaRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "python3.9"
+            }
+        },
+        "LambdaProvision": {
+            "Type": "Custom::LambdaProvision",
+            "Version": "1.0",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "LambdaFunction",
+                        "Arn"
+                    ]
+                },
+                "RedshiftRole": {
+                    "Fn::GetAtt": [
+                        "CrossAccountRole",
+                        "Arn"
+                    ]
+                },
+                "Bucket": {
+                    "Fn::If": [
+                        "CreateS3Bucket",
+                        {
+                            "Ref": "LoggingBucket"
+                        },
+                        {
+                            "Ref": "AWS::NoValue"
+                        }
+                    ]
+                },
+                "Cluster": {
+                    "Ref": "Cluster"
+                },
+                "Db": {
+                    "Ref": "Db"
+                },
+                "DbUser": {
+                    "Ref": "DbUser"
+                },
+                "Region": {
+                    "Fn::Sub": "${AWS::Region}"
+                },
+                "ConfigureS3Logging": {
+                    "Ref": "ConfigureS3Logging"
+                },
+                "ConfigureS3LoggingRestart": {
+                    "Ref": "ConfigureS3LoggingRestart"
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "RoleArn": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "CrossAccountRole",
+                    "Arn"
+                ]
+            },
+            "Description": "The ARN value of the Cross-Account Role with IAM read-only permissions. Add this ARN value to Select Star."
+        },
+        "LoggingBucket": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "LambdaProvision",
+                    "LoggingBucket"
+                ]
+            },
+            "Description": "The bucket name which stores Redshift logs."
+        }
+    }
+}
