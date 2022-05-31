@@ -228,7 +228,7 @@ def handler(event, context):
                         )
                 execQuery(cluster, db[0], dbUser, "drop user selectstar;")
             except Exception as e:
-                logging.info("User could not be removed")
+                logging.warn("User could not be removed")
 
             try:
                 redshift_client.modify_cluster_iam_roles(
@@ -238,45 +238,22 @@ def handler(event, context):
                 waiter = redshift_client.get_waiter("cluster_available")
                 waiter.wait(ClusterIdentifier=cluster)
             except Exception as e:
-                logging.info("Role could not be removed")
+                logging.warn("Role could not be removed")
 
             cfnresponse.send(
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
-            try:
-                ensure_iam_role(cluster, role)
-            except Exception as e:
-                logger.error(e)
-                raise DataException("Configure IAM role failed")
+            ensure_iam_role(cluster, role)
             logging.info("IAM role configured successfully")
-            # Configure S3 logging for Redshift
-            try:
-                logging_bucket = ensure_logging_enabled(
-                    cluster, configureS3Logging, bucket
-                )
-            except DataException:
-                raise
-            except Exception as e:
-                logger.error(e)
-                raise DataException("Configure logging failed")
+            logging_bucket = ensure_logging_enabled(
+                cluster, configureS3Logging, bucket
+            )
             logging.info("S3 logging configured successfully")
-
-            try:
-                ensure_custom_parameter_group(cluster, configureS3Logging)
-            except DataException:
-                raise
-            except Exception as e:
-                logger.error(e)
-                raise DataException("Ensure custom parameter group failed")
-
-            try:
-                ensure_user_activity_enabled(cluster, configureS3Logging)
-            except DataException:
-                raise
-            except Exception as e:
-                logger.error(e)
-                raise DataException("Ensure user activity enabled failed")
+            ensure_custom_parameter_group(cluster, configureS3Logging)
+            logging.info("Ensured a custom parameter group")
+            ensure_user_activity_enabled(cluster, configureS3Logging)
+            logging.info("Ensured a user activity enabled")
 
             if configureS3LoggingRestart:
                 ensure_cluster_restarted(cluster)
