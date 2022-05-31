@@ -81,11 +81,24 @@ def execQuery(cluster, db, user, statement):
 
 @retry_aws(codes=["InvalidClusterState"])
 def ensure_iam_role(cluster, role):
-    redshift_client.modify_cluster_iam_roles(
-        ClusterIdentifier=cluster, AddIamRoles=[role]
+    cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
+        "Clusters"
+    ][0]
+    enabled = any(
+        iam_role["IamRoleArn"] == role
+        for iam_role in cluster_description['IamRoles']
     )
-    waiter = redshift_client.get_waiter("cluster_available")
-    waiter.wait(ClusterIdentifier=cluster)
+    if enabled:
+        logging.info(
+            "IAM role added to cluster. Nothing to do.",
+        )
+    else:
+        logging.info("Add IAM role to cluster required.")
+        redshift_client.modify_cluster_iam_roles(
+            ClusterIdentifier=cluster, AddIamRoles=[role]
+        )
+        waiter = redshift_client.get_waiter("cluster_available")
+        waiter.wait(ClusterIdentifier=cluster)
 
 
 @retry_aws(codes=["InvalidClusterState"])
@@ -102,6 +115,7 @@ def ensure_logging_enabled(cluster, configureS3Logging, bucket):
                 "Configure S3 logging failed. Another destination of logging active."
             )
     elif configureS3Logging:
+        logging.info("Enable logging required.")
         redshift_client.enable_logging(
             ClusterIdentifier=cluster,
             BucketName=bucket,
@@ -127,16 +141,16 @@ def ensure_custom_parameter_group(cluster, configureS3Logging):
         "ParameterGroupName"
     ]
     logging.info("Current parameter group name: %s", parameter_group_name)
-    if parameter_group_name.startswith("default."):
+    if not parameter_group_name.startswith("default."):
+        logging.info(
+            "Custom parameter group used. Nothing to do.",
+        )
+    elif configureS3Logging:
+        logging.info("Create a new parameter group required.")
         parameter_group = redshift_client.describe_cluster_parameter_groups(
             ParameterGroupName=parameter_group_name
         )["ParameterGroups"][0]
         custom_parameter_group = f"redshift-custom-{cluster}"
-        if not configureS3Logging:
-            raise DataException(
-                "Configure logging failed."
-                "Setup logging to S3 must be accepted in CloudFormation or custom parameter group set manually."
-            )
         redshift_client.create_cluster_parameter_group(
             ParameterGroupName=custom_parameter_group,
             ParameterGroupFamily=parameter_group["ParameterGroupFamily"],
@@ -150,7 +164,11 @@ def ensure_custom_parameter_group(cluster, configureS3Logging):
         logging.info("Custom parameter set for cluster: %s", custom_parameter_group)
         waiter = redshift_client.get_waiter("cluster_available")
         waiter.wait(ClusterIdentifier=cluster)
-
+    else:
+        raise DataException(
+            "Configure logging failed."
+            "Setup logging to S3 must be accepted in CloudFormation or custom parameter group set manually."
+        )
 
 @retry_aws(codes=["InvalidClusterParameterGroupState"])
 def ensure_user_activity_enabled(cluster, configureS3Logging):
@@ -168,12 +186,11 @@ def ensure_user_activity_enabled(cluster, configureS3Logging):
         for resp in paginator.paginate(ParameterGroupName=parameter_group)
         for parameter in resp["Parameters"]
     )
-    if not enabled:
-        if not configureS3Logging:
-            raise DataException(
-                "Configure logging failed."
-                f"Setup logging to S3 must be accepted in CloudFormation or parameter '{USER_ACTIVITY}' enabled manually."
-            )
+    if enabled:
+        logging.info(
+            "User activity enabled. Nothing to do.",
+        )
+    elif configureS3Logging:
         redshift_client.modify_cluster_parameter_group(
             ParameterGroupName=parameter_group,
             Parameters=[
@@ -184,11 +201,16 @@ def ensure_user_activity_enabled(cluster, configureS3Logging):
             ],
         )
         logging.info("Parameter group updated to set parameter: %s", USER_ACTIVITY)
-    waiter = redshift_client.get_waiter("cluster_available")
-    waiter.wait(ClusterIdentifier=cluster)
+        waiter = redshift_client.get_waiter("cluster_available")
+        waiter.wait(ClusterIdentifier=cluster)
+    else:
+        raise DataException(
+            "Configure logging failed."
+            f"Setup logging to S3 must be accepted in CloudFormation or parameter '{USER_ACTIVITY}' enabled manually."
+        )
 
 
-def ensure_cluster_restarted(cluster):
+def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
     cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
         "Clusters"
     ][0]
@@ -198,10 +220,26 @@ def ensure_cluster_restarted(cluster):
         for group in cluster_description["ClusterParameterGroups"]
         for param in group["ClusterParameterStatusList"]
     )
-    if pending_reboot:
+    if not pending_reboot:
+        logging.info(
+            "No pending modifications. Nothing to do.",
+        )
+    elif configureS3LoggingRestart:
+        logging.info(
+            "Cluster requires reboot.",
+        )
         redshift_client.reboot_cluster(ClusterIdentifier=cluster)
+        logging.info(
+            "Cluster rebooted. Waiting to start.",
+        )
         waiter = redshift_client.get_waiter("cluster_available")
         waiter.wait(ClusterIdentifier=cluster)
+        logging.info("Cluster started after reboot.")
+    else:
+        logging.warn(
+            "Pending modifications. They will probably be applied during the next maintenance window.",
+        )
+    
 
 
 def handler(event, context):
@@ -255,8 +293,7 @@ def handler(event, context):
             ensure_user_activity_enabled(cluster, configureS3Logging)
             logging.info("Ensured a user activity enabled")
 
-            if configureS3LoggingRestart:
-                ensure_cluster_restarted(cluster)
+            ensure_cluster_restarted(cluster, configureS3LoggingRestart)
             logging.info("User audit logging configured successfully")
 
             try:

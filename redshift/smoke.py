@@ -31,6 +31,6 @@ def get_event(request_type):
 if __name__ == '__main__':
     provision.ensure_custom_parameter_group(CLUSTER, True)
     provision.ensure_user_activity_enabled(CLUSTER, True)
-    provision.ensure_cluster_restarted(CLUSTER)
+    provision.ensure_cluster_restarted(CLUSTER, True)
     provision.handler(get_event("Create"), MockContext())
     provision.handler(get_event("Delete"), MockContext())

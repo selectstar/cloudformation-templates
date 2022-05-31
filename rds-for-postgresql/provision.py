@@ -181,7 +181,7 @@ def ensure_log_exporting_enabled(server, configureLogging):
     enabled_log_export = instance.get("EnabledCloudwatchLogsExports", [])
     if "postgresql" in enabled_log_export:
         logging.info(
-            "Log export configured. Noting to do.",
+            "Log export configured. Nothing to do.",
         )
     elif configureLogging:
         rds_client.modify_db_instance(
@@ -219,7 +219,7 @@ def ensure_instance_restarted(server, configureLoggingRestart):
     )
     if not any([pending_values, pending_parameter_group]):
         logging.info(
-            "No pending modifications. Noting to do.",
+            "No pending modifications. Nothing to do.",
         )
     elif configureLoggingRestart:
         logging.info(
@@ -235,7 +235,7 @@ def ensure_instance_restarted(server, configureLoggingRestart):
         waiter.wait(DBInstanceIdentifier=server)
         logging.info("Instance started after reboot.")
     else:
-        logging.info(
+        logging.warn(
             "Pending modifications. They will probably be applied during the next maintenance window.",
         )
 
