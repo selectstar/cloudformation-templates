@@ -250,7 +250,7 @@
                                             "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ServerName}"
                                         },
                                         {
-                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:pg:*"
+                                            "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:pg:*"
                                         }
                                     ]
                                 },
