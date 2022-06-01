@@ -1,8 +1,19 @@
 import json
+import sys
 
-with open('SelectStarRDS.json', 'r') as f:
+BUCKET = sys.argv[1]
+KEY = sys.argv[2]
+
+with open("SelectStarRDS.json", "r") as f:
     data = json.load(f)
 
-with open('SelectStarRDS.json', 'w') as f, open('provision.py', 'r') as script_fp:
-    data['Resources']['LambdaFunction']['Properties']['Code']['ZipFile'] = script_fp.read()
-    json.dump(data, f, indent=4,)
+with open("SelectStarRDS.json", "w") as f:
+    data["Resources"]["LambdaFunction"]["Properties"]["Code"] = {
+        "S3Bucket": BUCKET,
+        "S3Key": KEY,
+    }
+    json.dump(
+        data,
+        f,
+        indent=4,
+    )
