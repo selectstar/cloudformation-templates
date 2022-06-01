@@ -1,6 +1,6 @@
 #!/bin/bash
 set -eux
-BUCKET="$1"
+BUCKET="${1-cf-templates-pp3cips1o7jf-us-east-2}"
 PREFIX="${2-rds-for-postgresql}"
 
 # Build deployment package

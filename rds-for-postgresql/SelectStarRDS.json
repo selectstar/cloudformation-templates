@@ -59,11 +59,12 @@
             "ParameterGroups": [
                 {
                     "Label": {
-                        "default": "PostgreSQL configuration"
+                        "default": "AWS RDS for PostgreSQL configuration"
                     },
                     "Parameters": [
                         "ServerName",
                         "Db",
+                        "Schema",
                         "DbUser",
                         "DbPassword"
                     ]
@@ -89,7 +90,7 @@
             ],
             "ParameterLabels": {
                 "ServerName": {
-                    "default": "AWS RDS for PostgreSQL server name"
+                    "default": "RDS server name"
                 },
                 "Db": {
                     "default": "PostgreSQL databases granted"
@@ -108,7 +109,7 @@
             "Type": "AWS::SecretsManager::Secret",
             "Properties": {
                 "Name": {
-                    "Fn:Sub": "${AWS::StackName}/selectstar-user-credentials"
+                    "Fn::Sub": "${AWS::StackName}/selectstar-user-credentials"
                 },
                 "GenerateSecretString": {
                     "SecretStringTemplate": "{\"username\": \"selectstar\"}",
@@ -141,7 +142,7 @@
                                 "rds-db:connect"
                             ],
                             "Resource": {
-                                "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:dbuser:db-${Cluster}/selectstar"
+                                "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:dbuser:db-${ServerName}/selectstar"
                             }
                         },
                         {
@@ -155,7 +156,7 @@
                             ],
                             "Effect": "Allow",
                             "Resource": {
-                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/instance/${Cluster}/*:*"
+                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/instance/${ServerName}/*:*"
                             }
                         },
                         {
@@ -243,7 +244,7 @@
                                     ],
                                     "Resource": [
                                         {
-                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:db:${Server}"
+                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:db:${ServerName}"
                                         },
                                         {
                                             "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:pg:*"
