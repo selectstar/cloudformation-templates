@@ -1,4 +1,5 @@
 import provision
+import os
 
 CLUSTER = "postgres-test-data"
 
@@ -19,12 +20,12 @@ def get_event(request_type):
         "ResourceType": "AWS::CloudFormation::CustomResource",
         "ResourceProperties": {
             "ServiceToken": "arn:aws:lambda:us-east-2:123456789012:function:lambda-error-processor-primer-14ROR2T3JKU66",
-            "RedshiftRole": "arn:aws:iam::792169733636:role/aws-service-role/redshift.amazonaws.com/AWSServiceRoleForRedshift",
-            "Bucket": "redshift-logging-selectstar",
+            "secretArn": "arn:aws:secretsmanager:us-east-2:792169733636:secret:stack-integration/selectstar-user-credentials-bnZWSD",
             "ServerName": CLUSTER,
-            "Db": ["dev"],
-            "DbUser": "awsuser",
-            "DbPassword": "password",
+            "Db": ["olist"],
+            "Schema": ["public"],
+            "DbUser": "postgres",
+            "DbPassword": os.environ['PG_PASSWORD'],
             "Region": "us-east-2",
             "ConfigureLogging": "true",
             "ConfigureLoggingRestart": "true",

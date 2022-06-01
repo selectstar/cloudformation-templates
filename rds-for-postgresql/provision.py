@@ -2,10 +2,13 @@ import json
 import boto3
 import logging
 import time
-import urllib3
 import cfnresponse
 import botocore
 import boto3
+import psycopg2
+from psycopg2 import sql
+
+import hashlib
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
@@ -20,6 +23,8 @@ logger.setLevel(logging.INFO)
 
 rds_client = boto3.client("rds")
 s3_client = boto3.client("s3")
+secret_client = boto3.client("secretsmanager")
+
 
 class DataException(Exception):
     pass
@@ -240,19 +245,171 @@ def ensure_instance_restarted(server, configureLoggingRestart):
         )
 
 
+def str2hash(value):
+    return hashlib.md5(value.encode()).digest()
+
+
+def execQuery(cur, text, noEcho=False, **parameters):
+    q = sql.SQL(text).format(**parameters)
+    if not noEcho:
+        logger.info("Executing SQL: %s", q.as_string(cur.connection))
+    else:
+        logger.info("Executing SQL: %s", "*" * len(q.as_string(cur.connection)))
+    return cur.execute(q)
+
+
+def ensure_user_created(server, db, schema, user, password, secretArn):
+    instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
+        "DBInstances"
+    ][0]
+    secret_response = secret_client.get_secret_value(SecretId=secretArn)
+    secret = json.loads(secret_response["SecretString"])
+    logging.info("Successfully retrieved & decoded secret: %s", secretArn)
+    with psycopg2.connect(
+        host=instance["Endpoint"]["Address"],
+        port=instance["Endpoint"]["Port"],
+        user=user,
+        # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
+        dbname="postgres",
+        password=password,
+    ) as conn, conn.cursor() as cur:
+        logger.info("Successfully connected to PostgreSQL")
+        try:
+            execQuery(
+                cur,
+                "CREATE USER {user} WITH encrypted password {password}",
+                noEcho=True,
+                user=sql.Identifier(secret["username"]),
+                password=sql.Literal(secret["password"]),
+            )
+        except psycopg2.errors.DuplicateObject:
+            logging.warn("User '%s' already exist in instance", secret["username"])
+            conn.rollback()
+        for name in db:
+            execQuery(
+                cur,
+                "GRANT CONNECT ON DATABASE {name} TO {user};",
+                name=sql.Identifier(name),
+                user=sql.Identifier(secret["username"]),
+            )
+        for name in schema:
+            execQuery(
+                cur,
+                "GRANT USAGE ON SCHEMA {name} TO {user};",
+                name=sql.Identifier(name),
+                user=sql.Identifier(secret["username"]),
+            )
+            execQuery(
+                cur,
+                "GRANT SELECT ON ALL TABLES IN SCHEMA {name} TO {user};",
+                name=sql.Identifier(name),
+                user=sql.Identifier(secret["username"]),
+            )
+            execQuery(
+                cur,
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} GRANT SELECT ON TABLES TO {user};",
+                name=sql.Identifier(name),
+                user=sql.Identifier(secret["username"]),
+            )
+
+
+def ensure_user_database_revoked(cur, username):
+    cur.execute(
+        sql.SQL(
+            "select datname from pg_catalog.pg_database where has_database_privilege({user}, datname, 'connect')"
+        ).format(user=sql.Literal(username))
+    )
+    db = [row[0] for row in cur.fetchall()]
+    print("Databases: ", db)
+    for name in db:
+        execQuery(
+            cur,
+            "REVOKE ALL PRIVILEGES ON DATABASE {name} FROM {user};",
+            name=sql.Identifier(name),
+            user=sql.Identifier(username),
+        )
+
+
+def ensure_user_schema_revoked(cur, username):
+    cur.execute(
+        sql.SQL(
+            "SELECT DISTINCT table_schema FROM information_schema.table_privileges WHERE grantee = {user};"
+        ).format(user=sql.Literal(username))
+    )
+    schema = [row[0] for row in cur.fetchall()] + ["public"]
+    print("Schemas: ", schema)
+    for name in schema:
+        execQuery(
+            cur,
+            "REVOKE ALL ON SCHEMA {name} FROM {user};",
+            name=sql.Identifier(name),
+            user=sql.Identifier(username),
+        )
+        execQuery(
+            cur,
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} REVOKE ALL ON TABLES FROM {user};",
+            name=sql.Identifier(name),
+            user=sql.Identifier(username),
+        )
+        execQuery(
+            cur,
+            "REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA {name} FROM {user};",
+            name=sql.Identifier(name),
+            user=sql.Identifier(username),
+        )
+
+
+def ensure_user_removed(server, user, password, secretArn):
+    instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
+        "DBInstances"
+    ][0]
+    secret_response = secret_client.get_secret_value(SecretId=secretArn)
+    secret = json.loads(secret_response["SecretString"])
+    logging.info("Successfully retrieved & decoded secret: %s", secretArn)
+    with psycopg2.connect(
+        host=instance["Endpoint"]["Address"],
+        port=instance["Endpoint"]["Port"],
+        user=user,
+        # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
+        dbname="postgres",
+        password=password,
+    ) as conn, conn.cursor() as cur:
+        logger.info("Successfully connected to PostgreSQL")
+        try:
+            ensure_user_database_revoked(cur, secret["username"])
+            ensure_user_schema_revoked(cur, secret["username"])
+            execQuery(
+                cur,
+                "DROP USER IF EXISTS {user};",
+                user=sql.Identifier(secret["username"]),
+            )
+        except psycopg2.errors.UndefinedObject:
+            logger.warning("User not deleted because it did not exist.")
+
+
 def handler(event, context):
-    logger.info(json.dumps(event))
     try:
         properties = event["ResourceProperties"]
-        # role = properties["RedshiftRole"]
+
+        dbPassword = properties["DbPassword"]
+        properties["DbPassword"] = "*" * len(
+            dbPassword
+        )  # redact password before logging
+        logger.info(json.dumps(event))
+
         server = properties["ServerName"]
         # bucket = properties["Bucket"]
-        # db = properties["Db"]
-        # dbUser = properties["DbUser"]
+        db = properties["Db"]
+        schema = properties["Schema"]
+        dbUser = properties["DbUser"]
+        secretArn = properties["secretArn"]
         configureLogging = properties["ConfigureLogging"] == "true"
         configureLoggingRestart = properties["ConfigureLoggingRestart"] == "true"
 
         if event["RequestType"] == "Delete":
+            ensure_user_removed(server, dbUser, dbPassword, secretArn)
+            logging.info("User removed successfully")
+
             cfnresponse.send(
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
@@ -268,6 +425,8 @@ def handler(event, context):
             ensure_log_exporting_enabled(server, configureLogging)
             logging.info("Custom log exporting configured successfully")
             ensure_instance_restarted(server, configureLoggingRestart)
+            logging.info("Successfully ensured instance restarted (if allowed)")
+            ensure_user_created(server, db, schema, dbUser, dbPassword, secretArn)
 
             return cfnresponse.send(
                 event,
