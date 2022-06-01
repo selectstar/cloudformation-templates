@@ -248,7 +248,7 @@ def handler(event, context):
         properties = event["ResourceProperties"]
         role = properties["RedshiftRole"]
         cluster = properties["Cluster"]
-        bucket = properties["Bucket"]
+        bucket = properties.get("Bucket", None)
         db = properties["Db"]
         dbUser = properties["DbUser"]
         configureS3Logging = properties["ConfigureS3Logging"] == "true"
