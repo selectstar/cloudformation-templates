@@ -7,6 +7,8 @@ import botocore
 import boto3
 import psycopg2
 from psycopg2 import sql
+from aws_xray_sdk.core import xray_recorder
+from aws_xray_sdk.core import patch_all
 
 import hashlib
 
@@ -15,6 +17,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d:%H:%M:%S",
     level=logging.INFO,
 )
+
+xray_recorder.configure(service='Select Star & AWS RDS for PostgreSQL integration')
+patch_all()
 
 USER_ACTIVITY = "enable_user_activity_logging"
 
@@ -54,13 +59,14 @@ def retry_aws(retries=3, codes=[]):
 
 
 def ensure_valid_cluster_engine(server):
-    instances = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
-        "DBInstances"
-    ]
-    if not instances:
-        raise DataException(
-            "Provisiong failed. DB instannce not found. Verify DB instance name."
-        )
+    try:
+        instances = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
+            "DBInstances"
+        ]
+    except botocore.exceptions.ClientError as err:
+        if err.response["Error"]["Code"] == "DBInstanceNotFound":
+            raise DataException(f"Provisiong failed. DB instannce '{server}' not found. Verify DB instance name.")
+        raise err
     instance = instances[0]
     if instance["Engine"] != "postgres":
         raise DataException(

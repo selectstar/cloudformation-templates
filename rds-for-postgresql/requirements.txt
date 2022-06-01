@@ -1,1 +1,2 @@
 aws-psycopg2==1.2.1
+aws-xray-sdk==2.9.0
