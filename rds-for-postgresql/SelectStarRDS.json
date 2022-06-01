@@ -271,7 +271,8 @@
                     }
                 ],
                 "ManagedPolicyArns": [
-                    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                    "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
                 ]
             }
         },
@@ -350,7 +351,7 @@
             "Value": {
                 "Ref": "DatabaseSecret"
             },
-            "Description": "The name of Secret of AWS Secret Manager which stores credentials for Select Star account in PostgreSQL. Add this value to Select Star."
+            "Description": "The ARN value of the Secret of AWS Secret Manager which stores credentials for Select Star account in PostgreSQL. Add this ARN value to Select Star."
         }
     }
 }
