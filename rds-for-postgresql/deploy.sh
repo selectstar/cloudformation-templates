@@ -9,6 +9,7 @@ pip install --target ./package -r requirements.txt
 pushd package
 zip -r ../deployment-package.zip .
 zip -g ../deployment-package.zip ../provision.py
+zip -g ../deployment-package.zip ../cfnresponse.py
 popd;
 # Generate templates
 python update.py "$BUCKET" "$PREFIX/deployment-package.zip"
