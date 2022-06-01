@@ -95,6 +95,9 @@
                 "Db": {
                     "default": "PostgreSQL databases granted"
                 },
+                "Schema": {
+                    "default": "PostgreSQL schema granted"
+                },
                 "ConfigureLogging": {
                     "default": "Configure CloudWatch logging (if disabled)"
                 },
@@ -287,7 +290,10 @@
                         "Arn"
                     ]
                 },
-                "Runtime": "python3.9"
+                "Runtime": "python3.9",
+                "TracingConfig": {
+                    "Mode": "Active"
+                }
             }
         },
         "LambdaProvision": {
