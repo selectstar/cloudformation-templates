@@ -1,8 +1,8 @@
 # cloudformation-templates
 
-CloudFormation Templates to configure SelectStar integrations with consumer services:
+CloudFormation Templates to configure SelectStar integrations with services in consumer AWS account:
 
 * [AWS RDS for PostgreSQL](./rds-for-postgresql/)
-* [Redshift](./redshift/)
+* [AWS Redshift](./redshift/)
 
 Feel free to ask if you have any concerns.
