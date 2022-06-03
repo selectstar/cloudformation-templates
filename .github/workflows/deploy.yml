@@ -27,10 +27,12 @@ jobs:
           role-session-name: "github-action"
           aws-region: ${{ inputs.aws-region }}
       - name: Deploy RDS for PostgreSQL
-        run: ./rds-for-postgresql/deploy.sh "$BUCKET_NAME"
+        working-directory: './rds-for-postgresql'
+        run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
       - name: Deploy Redshift
-        run: ./redshift/deploy.sh "$BUCKET_NAME"
+        working-directory: './redshift'
+        run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
