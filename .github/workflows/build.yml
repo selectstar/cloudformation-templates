@@ -1,0 +1,65 @@
+name: Test & Build & Push
+permissions:
+  id-token: write # required for aws-actions/configure-aws-credentials@v1
+  contents: read # required for actions/checkout@v2
+on:
+  push:
+    # Sequence of patterns matched against refs/heads
+    branches:
+      - main
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "*"
+  pull_request:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      # TODO: add relevant linter
+
+  deploy_testing:
+    needs: build
+    name: Deploy to preview for testing
+    # deploy always
+    uses: ./.github/workflows/deploy.yml
+    with:
+      aws-account-id: "591617137652"
+      aws-region: us-east-2
+      aws-bucket-name: select-star-dev-adam-cloudformation
+
+  deploy_production:
+    needs:
+      - build
+    name: Deploy to production
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/production-')
+    uses: ./.github/workflows/deploy.yml
+    with:
+      aws-account-id: "672751098944"
+      aws-region: us-east-2
+      aws-bucket-name: select-star-production-cloudformation
+
+  deploy_staging:
+    needs:
+      - build
+    name: Deploy to staging
+    if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/staging-')
+    uses: ./.github/workflows/deploy.yml
+    with:
+      aws-account-id: "672751098944"
+      aws-region: us-east-2
+      aws-bucket-name: select-star-staging-cloudformation
+
+
+  deploy_preview:
+    needs:
+      - build
+    name: Deploy to preview
+    if: startsWith(github.ref, 'refs/tags/preview-')
+    uses: ./.github/workflows/deploy.yml
+    with:
+      aws-account-id: "672751098944"
+      aws-region: us-east-2
+      aws-bucket-name: select-star-preview-cloudformation

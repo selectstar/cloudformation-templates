@@ -1,0 +1,36 @@
+name: "Deploy to S3"
+
+on:
+  workflow_call:
+    inputs:
+      aws-account-id:
+        description: "AWS Account ID"
+        type: string
+        required: true
+      aws-region:
+        description: "AWS Region"
+        type: string
+        required: true
+      aws-bucket-name:
+        description: "AWS S3 bucket name"
+        type: string
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/github-${{ github.repository_owner }}-${{ github.event.repository.name }}
+          role-session-name: "github-action"
+          aws-region: ${{ inputs.aws-region }}
+      - name: Deploy RDS for PostgreSQL
+        run: ./rds-for-postgresql/deploy.sh "$BUCKET_NAME"
+        env:
+          BUCKET_NAME: ${{ inputs.aws-bucket-name }}
+      - name: Deploy Redshift
+        run: ./redshift/deploy.sh "$BUCKET_NAME"
+        env:
+          BUCKET_NAME: ${{ inputs.aws-bucket-name }}
