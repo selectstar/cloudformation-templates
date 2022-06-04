@@ -29,6 +29,7 @@ logger.setLevel(logging.INFO)
 redshiftdata_client = boto3.client("redshift-data")
 redshift_client = boto3.client("redshift")
 
+
 class DataException(Exception):
     pass
 
@@ -79,14 +80,41 @@ def execQuery(cluster, db, user, statement):
         raise e
 
 
+def ensure_valid_cluster(cluster):
+    try:
+        instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
+            "Clusters"
+        ]
+    except botocore.exceptions.ClientError as err:
+        if err.response["Error"]["Code"] == "ClusterNotFound":
+            raise DataException(
+                f"Provisiong failed. Cluster '{cluster}' not found. Verify DB instance name."
+            )
+        raise err
+    instance = instances[0]
+    logging.info("Cluster status is '%s'. ", instance["ClusterStatus"])
+    if instance["ClusterStatus"] == "paused":
+        raise DataException(
+            f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Resume the cluster and try again."
+        )
+    if instance["ClusterStatus"] != "available":
+        raise DataException(
+            f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Update the cluster configurations and try again."
+        )
+    logging.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
+    if not instance["PubliclyAccessible"]:
+        raise DataException(
+            "Cluster must be publicly available. Update the cluster configurations (https://aws.amazon.com/premiumsupport/knowledge-center/redshift-cluster-private-public/) and try again."
+        )
+
+
 @retry_aws(codes=["InvalidClusterState"])
 def ensure_iam_role(cluster, role):
     cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
         "Clusters"
     ][0]
     enabled = any(
-        iam_role["IamRoleArn"] == role
-        for iam_role in cluster_description['IamRoles']
+        iam_role["IamRoleArn"] == role for iam_role in cluster_description["IamRoles"]
     )
     if enabled:
         logging.info(
@@ -170,6 +198,7 @@ def ensure_custom_parameter_group(cluster, configureS3Logging):
             "Setup logging to S3 must be accepted in CloudFormation or custom parameter group set manually."
         )
 
+
 @retry_aws(codes=["InvalidClusterParameterGroupState"])
 def ensure_user_activity_enabled(cluster, configureS3Logging):
     cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
@@ -239,7 +268,6 @@ def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
         logging.warn(
             "Pending modifications. They will probably be applied during the next maintenance window.",
         )
-    
 
 
 def handler(event, context):
@@ -282,11 +310,11 @@ def handler(event, context):
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
+            ensure_valid_cluster(cluster)
+            logging.info("Ćluster validated successfully")
             ensure_iam_role(cluster, role)
             logging.info("IAM role configured successfully")
-            logging_bucket = ensure_logging_enabled(
-                cluster, configureS3Logging, bucket
-            )
+            logging_bucket = ensure_logging_enabled(cluster, configureS3Logging, bucket)
             logging.info("S3 logging configured successfully")
             ensure_custom_parameter_group(cluster, configureS3Logging)
             logging.info("Ensured a custom parameter group")
