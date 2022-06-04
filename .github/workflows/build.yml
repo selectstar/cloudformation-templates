@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      # TODO: add relevant linter
-
+      - name: Validate templates
+        run: ./.github/scripts/validate-templates.sh
   deploy_testing:
     needs: 
     - test
