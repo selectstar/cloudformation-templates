@@ -6,12 +6,17 @@ import urllib3
 import cfnresponse
 import botocore
 import boto3
+from aws_xray_sdk.core import xray_recorder
+from aws_xray_sdk.core import patch_all
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
     datefmt="%Y-%m-%d:%H:%M:%S",
     level=logging.INFO,
 )
+
+xray_recorder.configure(service='Select Star & AWS RDS for PostgreSQL integration')
+patch_all()
 
 USER_ACTIVITY = "enable_user_activity_logging"
 TABLES = [
