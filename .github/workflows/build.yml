@@ -18,6 +18,12 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: arn:aws:iam::672751098944:role/github-${{ github.repository_owner }}-${{ github.event.repository.name }}
+          role-session-name: "github-action"
+          aws-region: us-east-2
       - name: Validate templates
         run: ./.github/scripts/validate-templates.sh
   deploy_testing:
