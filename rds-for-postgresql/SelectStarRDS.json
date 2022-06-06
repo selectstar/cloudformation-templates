@@ -163,7 +163,10 @@
                             }
                         },
                         {
-                            "Action": "logs:GetQueryResults",
+                            "Action": [
+                                "logs:GetQueryResults",
+                                "logs:DescribeLogGroups"
+                            ],
                             "Effect": "Allow",
                             "Resource": "arn:aws:logs:*:*:log-group::log-stream:"
                         },
