@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Stack to enable integration SelectStar with Redshift",
+    "Description": "Stack to enable integration Select Star with Redshift",
     "Parameters": {
         "Cluster": {
             "Type": "String",
