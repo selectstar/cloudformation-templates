@@ -99,7 +99,7 @@ workflows:
             tags:
               only: /^staging-.*/
             branches:
-              only: master
+              only: main
 
       - deploy:
           context:
