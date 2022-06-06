@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Stack to enable integration SelectStar with AWS RDS for PostgreSQL",
+    "Description": "Stack to enable integration Select Star with AWS RDS for PostgreSQL",
     "Parameters": {
         "ServerName": {
             "Type": "String",
