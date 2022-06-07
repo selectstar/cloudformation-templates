@@ -9,7 +9,7 @@ import psycopg2
 from psycopg2 import sql
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
-
+import os
 import hashlib
 
 logging.basicConfig(
@@ -18,8 +18,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-xray_recorder.configure(service='Select Star & AWS RDS for PostgreSQL integration')
-patch_all()
+if 'LAMBDA_TASK_ROOT' in os.environ:
+    xray_recorder.configure(service='Select Star & AWS RDS for PostgreSQL integration')
+    patch_all()
 
 USER_ACTIVITY = "enable_user_activity_logging"
 
