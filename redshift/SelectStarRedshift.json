@@ -27,6 +27,26 @@
             "MinLength": "1",
             "Type": "String"
         },
+        "CidrIpPrimary": {
+            "Description": "The Select Star primary address range that will gain network access to the Redshift cluster. Do not change this.",
+            "Type": "String",
+            "Default": "3.23.108.85/32",
+            "AllowedValues": [
+                "3.23.108.85/32",
+                "3.20.56.105/32",
+                "0.0.0.0/0"
+            ]
+        },
+        "CidrIpSecondary": {
+            "Description": "The Select Star secondary address range that will gain network access to the Redshift cluster. Do not change this.",
+            "Type": "String",
+            "Default": "3.20.56.105/32",
+            "AllowedValues": [
+                "3.23.108.85/32",
+                "3.20.56.105/32",
+                "0.0.0.0/0"
+            ]
+        },
         "ConfigureS3Logging": {
             "Type": "String",
             "AllowedValues": [
@@ -72,7 +92,9 @@
                     },
                     "Parameters": [
                         "ExternalId",
-                        "IamPrincipal"
+                        "IamPrincipal",
+                        "CidrIpPrimary",
+                        "CidrIpSecondary"
                     ]
                 }
             ],
@@ -263,7 +285,8 @@
                                 "s3:ListMultipartUploadParts",
                                 "s3:GetObject",
                                 "s3:GetBucketLocation",
-                                "s3:GetObjectVersion"
+                                "s3:GetObjectVersion",
+                                "s3:ListBucket"
                             ],
                             "Resource": [
                                 {
@@ -504,6 +527,66 @@
                 },
                 "Prefix": {
                     "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${Cluster}/"
+                }
+            }
+        },
+        "InboundPrimaryRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "Description": {
+                    "Fn::Sub": "Authorize primary Select Star address range to access Redshift cluster: ${Cluster}"
+                },
+                "FromPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "RedshiftPort"
+                    ]
+                },
+                "ToPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "RedshiftPort"
+                    ]
+                },
+                "CidrIp": {
+                    "Ref": "CidrIpPrimary"
+                },
+                "GroupId": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "SecurityGroupId"
+                    ]
+                }
+            }
+        },
+        "InboundSecondaryRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "Description": {
+                    "Fn::Sub": "Authorize secondary Select Star addresss range to access Redshift cluster ${Cluster}"
+                },
+                "FromPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "RedshiftPort"
+                    ]
+                },
+                "ToPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "RedshiftPort"
+                    ]
+                },
+                "CidrIp": {
+                    "Ref": "CidrIpSecondary"
+                },
+                "GroupId": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "SecurityGroupId"
+                    ]
                 }
             }
         }

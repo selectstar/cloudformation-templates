@@ -6,6 +6,7 @@ import urllib3
 import cfnresponse
 import botocore
 import boto3
+import os
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
 
@@ -15,8 +16,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-xray_recorder.configure(service='Select Star & AWS RDS for PostgreSQL integration')
-patch_all()
+if 'LAMBDA_TASK_ROOT' in os.environ:
+    xray_recorder.configure(service="Select Star & AWS RDS for PostgreSQL integration")
+    patch_all()
 
 USER_ACTIVITY = "enable_user_activity_logging"
 TABLES = [
@@ -111,6 +113,15 @@ def ensure_valid_cluster(cluster):
         raise DataException(
             "Cluster must be publicly available. Update the cluster configurations (https://aws.amazon.com/premiumsupport/knowledge-center/redshift-cluster-private-public/) and try again."
         )
+    security_group_id = [
+        x["VpcSecurityGroupId"]
+        for x in instance["VpcSecurityGroups"]
+        if x["Status"] == "active"
+    ][0]
+    logging.info("Determined Redshift security group ID: %s", security_group_id)
+    redshift_port = instance["Endpoint"]["Port"]
+    logging.info("Determined Redshift port: %s", redshift_port)
+    return security_group_id, redshift_port
 
 
 @retry_aws(codes=["InvalidClusterState"])
@@ -315,7 +326,7 @@ def handler(event, context):
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
-            ensure_valid_cluster(cluster)
+            security_group_id, redshift_port = ensure_valid_cluster(cluster)
             logging.info("Ćluster validated successfully")
             ensure_iam_role(cluster, role)
             logging.info("IAM role configured successfully")
@@ -369,7 +380,11 @@ def handler(event, context):
                 event,
                 context,
                 cfnresponse.SUCCESS,
-                {"LoggingBucket": logging_bucket},
+                {
+                    "LoggingBucket": logging_bucket,
+                    "RedshiftPort": redshift_port,
+                    "SecurityGroupId": security_group_id,
+                },
                 reason="Create complete",
             )
     except DataException as e:
