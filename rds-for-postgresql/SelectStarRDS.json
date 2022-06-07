@@ -52,6 +52,26 @@
                 "false"
             ],
             "Description": "If true and logging changes made then the Postgresql instance can be restarted to apply changes. It is recommended to set the value \"true\"."
+        },
+        "CidrIpPrimary": {
+            "Description": "The Select Star primary address range that will gain network access to the Redshift cluster. Do not change this.",
+            "Type": "String",
+            "Default": "3.23.108.85/32",
+            "AllowedValues": [
+                "3.23.108.85/32",
+                "3.20.56.105/32",
+                "0.0.0.0/0"
+            ]
+        },
+        "CidrIpSecondary": {
+            "Description": "The Select Star secondary address range that will gain network access to the Redshift cluster. Do not change this.",
+            "Type": "String",
+            "Default": "3.20.56.105/32",
+            "AllowedValues": [
+                "3.23.108.85/32",
+                "3.20.56.105/32",
+                "0.0.0.0/0"
+            ]
         }
     },
     "Metadata": {
@@ -84,7 +104,9 @@
                     },
                     "Parameters": [
                         "ExternalId",
-                        "IamPrincipal"
+                        "IamPrincipal",
+                        "CidrIpPrimary",
+                        "CidrIpSecondary"
                     ]
                 }
             ],
@@ -333,6 +355,66 @@
                 },
                 "ConfigureLoggingRestart": {
                     "Ref": "ConfigureLoggingRestart"
+                }
+            }
+        },
+        "InboundPrimaryRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "Description": {
+                    "Fn::Sub": "Authorize primary Select Star address range to access PostgreSQL instance: ${ServerName}"
+                },
+                "FromPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "EndpointPort"
+                    ]
+                },
+                "ToPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "EndpointPort"
+                    ]
+                },
+                "CidrIp": {
+                    "Ref": "CidrIpPrimary"
+                },
+                "GroupId": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "SecurityGroupId"
+                    ]
+                }
+            }
+        },
+        "InboundSecondaryRule": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "Properties": {
+                "IpProtocol": "tcp",
+                "Description": {
+                    "Fn::Sub": "Authorize secondary Select Star addresss range to access PostgreSQL instance ${ServerName}"
+                },
+                "FromPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "EndpointPort"
+                    ]
+                },
+                "ToPort": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "EndpointPort"
+                    ]
+                },
+                "CidrIp": {
+                    "Ref": "CidrIpSecondary"
+                },
+                "GroupId": {
+                    "Fn::GetAtt": [
+                        "LambdaProvision",
+                        "SecurityGroupId"
+                    ]
                 }
             }
         }

@@ -540,13 +540,13 @@
                 "FromPort": {
                     "Fn::GetAtt": [
                         "LambdaProvision",
-                        "RedshiftPort"
+                        "EndpointPort"
                     ]
                 },
                 "ToPort": {
                     "Fn::GetAtt": [
                         "LambdaProvision",
-                        "RedshiftPort"
+                        "EndpointPort"
                     ]
                 },
                 "CidrIp": {
@@ -570,13 +570,13 @@
                 "FromPort": {
                     "Fn::GetAtt": [
                         "LambdaProvision",
-                        "RedshiftPort"
+                        "EndpointPort"
                     ]
                 },
                 "ToPort": {
                     "Fn::GetAtt": [
                         "LambdaProvision",
-                        "RedshiftPort"
+                        "EndpointPort"
                     ]
                 },
                 "CidrIp": {
