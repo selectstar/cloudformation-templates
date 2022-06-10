@@ -77,6 +77,15 @@ def ensure_valid_cluster_engine(server):
         raise DataException(
             "Instance must be publicly available. Update the instance configurations and try again."
         )
+    security_group_id = [
+        x["VpcSecurityGroupId"]
+        for x in instance["VpcSecurityGroups"]
+        if x["Status"] == "active"
+    ][0]
+    logging.info("Determined security group ID: %s", security_group_id)
+    endpoint_port = instance["Endpoint"]["Port"]
+    logging.info("Determined endpoint port: %s", endpoint_port)
+    return security_group_id, endpoint_port
 
 
 def ensure_custom_parameter_group(server, configureLogging):
@@ -421,7 +430,7 @@ def handler(event, context):
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
-            ensure_valid_cluster_engine(server)
+            security_group_id, endpoint_port = ensure_valid_cluster_engine(server)
             ensure_custom_parameter_group(server, configureLogging)
             logging.info("Custom parameter group of instance configured successfully.")
             ensure_parameter_set(server, configureLogging, "log_statement", "all")
@@ -439,7 +448,10 @@ def handler(event, context):
                 event,
                 context,
                 cfnresponse.SUCCESS,
-                {},
+                {
+                    "EndpointPort": endpoint_port,
+                    "SecurityGroupId": security_group_id,
+                },
                 # {"LogGroup": logging_bucket},
                 reason="Create complete",
             )

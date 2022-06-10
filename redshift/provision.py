@@ -118,10 +118,10 @@ def ensure_valid_cluster(cluster):
         for x in instance["VpcSecurityGroups"]
         if x["Status"] == "active"
     ][0]
-    logging.info("Determined Redshift security group ID: %s", security_group_id)
-    redshift_port = instance["Endpoint"]["Port"]
-    logging.info("Determined Redshift port: %s", redshift_port)
-    return security_group_id, redshift_port
+    logging.info("Determined security group ID: %s", security_group_id)
+    endpoint_port = instance["Endpoint"]["Port"]
+    logging.info("Determined endpoint port: %s", endpoint_port)
+    return security_group_id, endpoint_port
 
 
 @retry_aws(codes=["InvalidClusterState"])
@@ -326,7 +326,7 @@ def handler(event, context):
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
-            security_group_id, redshift_port = ensure_valid_cluster(cluster)
+            security_group_id, endpoint_port = ensure_valid_cluster(cluster)
             logging.info("Ćluster validated successfully")
             ensure_iam_role(cluster, role)
             logging.info("IAM role configured successfully")
@@ -382,7 +382,7 @@ def handler(event, context):
                 cfnresponse.SUCCESS,
                 {
                     "LoggingBucket": logging_bucket,
-                    "RedshiftPort": redshift_port,
+                    "EndpointPort": endpoint_port,
                     "SecurityGroupId": security_group_id,
                 },
                 reason="Create complete",
