@@ -308,25 +308,35 @@ def ensure_user_created(server, db, schema, user, password, secretArn):
                 name=sql.Identifier(name),
                 user=sql.Identifier(secret["username"]),
             )
-        for name in schema:
-            execQuery(
-                cur,
-                "GRANT USAGE ON SCHEMA {name} TO {user};",
-                name=sql.Identifier(name),
-                user=sql.Identifier(secret["username"]),
-            )
-            execQuery(
-                cur,
-                "GRANT SELECT ON ALL TABLES IN SCHEMA {name} TO {user};",
-                name=sql.Identifier(name),
-                user=sql.Identifier(secret["username"]),
-            )
-            execQuery(
-                cur,
-                "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} GRANT SELECT ON TABLES TO {user};",
-                name=sql.Identifier(name),
-                user=sql.Identifier(secret["username"]),
-            )
+            
+     for db_name in db:
+        with psycopg2.connect(
+            host=instance["Endpoint"]["Address"],
+            port=instance["Endpoint"]["Port"],
+            user=user,
+            dbname=db_name,
+            password=password,
+        ) as conn, conn.cursor() as cur:
+            for name in schema:
+                if name.startswith(f"{db_name}."):
+                    execQuery(
+                        cur,
+                        "GRANT USAGE ON SCHEMA {name} TO {user};",
+                        name=sql.Identifier(name),
+                        user=sql.Identifier(secret["username"]),
+                    )
+                    execQuery(
+                        cur,
+                        "GRANT SELECT ON ALL TABLES IN SCHEMA {name} TO {user};",
+                        name=sql.Identifier(name),
+                        user=sql.Identifier(secret["username"]),
+                    )
+                    execQuery(
+                        cur,
+                        "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} GRANT SELECT ON TABLES TO {user};",
+                        name=sql.Identifier(name),
+                        user=sql.Identifier(secret["username"]),
+                    )
 
 
 def ensure_user_database_revoked(cur, username):
