@@ -204,6 +204,8 @@
                         {
                             "Effect": "Allow",
                             "Action": [
+                                "redshift:DescribeClusters",
+                                "redshift:DescribeLoggingStatus",
                                 "redshift:ListSchemas",
                                 "redshift:ListTables",
                                 "redshift:ListDatabases",
