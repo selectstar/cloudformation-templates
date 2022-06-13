@@ -6,6 +6,7 @@ import cfnresponse
 import botocore
 import boto3
 import psycopg2
+from itertools import groupby
 from psycopg2 import sql
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
@@ -18,8 +19,8 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-if 'LAMBDA_TASK_ROOT' in os.environ:
-    xray_recorder.configure(service='Select Star & AWS RDS for PostgreSQL integration')
+if "LAMBDA_TASK_ROOT" in os.environ:
+    xray_recorder.configure(service="Select Star & AWS RDS for PostgreSQL integration")
     patch_all()
 
 USER_ACTIVITY = "enable_user_activity_logging"
@@ -66,7 +67,9 @@ def ensure_valid_cluster_engine(server):
         ]
     except botocore.exceptions.ClientError as err:
         if err.response["Error"]["Code"] == "DBInstanceNotFound":
-            raise DataException(f"Provisiong failed. DB instannce '{server}' not found. Verify DB instance name.")
+            raise DataException(
+                f"Provisiong failed. DB instannce '{server}' not found. Verify DB instance name."
+            )
         raise err
     instance = instances[0]
     if instance["Engine"] != "postgres":
@@ -267,14 +270,18 @@ def str2hash(value):
 
 def execQuery(cur, text, noEcho=False, **parameters):
     q = sql.SQL(text).format(**parameters)
-    if not noEcho:
-        logger.info("Executing SQL: %s", q.as_string(cur.connection))
-    else:
-        logger.info("Executing SQL: %s", "*" * len(q.as_string(cur.connection)))
+
+    query_string = cur.mogrify(q).decode("utf-8")
+    if noEcho:
+        query_string = "*" * len(query_string)
+
+    logger.info(
+        "Executing SQL on database '%s': %s", cur.connection.info.dbname, query_string
+    )
     return cur.execute(q)
 
 
-def ensure_user_created(server, db, schema, user, password, secretArn):
+def ensure_user_created(server, schema, user, password, secretArn):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
@@ -301,15 +308,8 @@ def ensure_user_created(server, db, schema, user, password, secretArn):
         except psycopg2.errors.DuplicateObject:
             logging.warn("User '%s' already exist in instance", secret["username"])
             conn.rollback()
-        for name in db:
-            execQuery(
-                cur,
-                "GRANT CONNECT ON DATABASE {name} TO {user};",
-                name=sql.Identifier(name),
-                user=sql.Identifier(secret["username"]),
-            )
-            
-     for db_name in db:
+    for db_name, db_schemas in groupby(schema, key=lambda x: x.split(".")[0]):
+        db_schemas = list(x.split(".")[1] for x in db_schemas)
         with psycopg2.connect(
             host=instance["Endpoint"]["Address"],
             port=instance["Endpoint"]["Port"],
@@ -317,37 +317,41 @@ def ensure_user_created(server, db, schema, user, password, secretArn):
             dbname=db_name,
             password=password,
         ) as conn, conn.cursor() as cur:
-            for name in schema:
-                if name.startswith(f"{db_name}."):
-                    execQuery(
-                        cur,
-                        "GRANT USAGE ON SCHEMA {name} TO {user};",
-                        name=sql.Identifier(name),
-                        user=sql.Identifier(secret["username"]),
-                    )
-                    execQuery(
-                        cur,
-                        "GRANT SELECT ON ALL TABLES IN SCHEMA {name} TO {user};",
-                        name=sql.Identifier(name),
-                        user=sql.Identifier(secret["username"]),
-                    )
-                    execQuery(
-                        cur,
-                        "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} GRANT SELECT ON TABLES TO {user};",
-                        name=sql.Identifier(name),
-                        user=sql.Identifier(secret["username"]),
-                    )
+            execQuery(
+                cur,
+                "GRANT CONNECT ON DATABASE {name} TO {user};",
+                name=sql.Identifier(db_name),
+                user=sql.Identifier(secret["username"]),
+            )
+            if "*" in db_schemas:
+                cur.execute(
+                    "SELECT schema_name FROM information_schema.schemata where schema_name not in ('pg_catalog', 'information_schema');"
+                )
+                db_schemas = [row[0] for row in cur.fetchall()]
+                logging.info("Resolve placeholder '*' to schemas: %s", db_schemas)
+            for schema_name in db_schemas:
+                execQuery(
+                    cur,
+                    "GRANT USAGE ON SCHEMA {name} TO {user};",
+                    name=sql.Identifier(schema_name),
+                    user=sql.Identifier(secret["username"]),
+                )
+                execQuery(
+                    cur,
+                    "GRANT SELECT ON ALL TABLES IN SCHEMA {name} TO {user};",
+                    name=sql.Identifier(schema_name),
+                    user=sql.Identifier(secret["username"]),
+                )
+                execQuery(
+                    cur,
+                    "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} GRANT SELECT ON TABLES TO {user};",
+                    name=sql.Identifier(schema_name),
+                    user=sql.Identifier(secret["username"]),
+                )
 
 
-def ensure_user_database_revoked(cur, username):
-    cur.execute(
-        sql.SQL(
-            "select datname from pg_catalog.pg_database where has_database_privilege({user}, datname, 'connect')"
-        ).format(user=sql.Literal(username))
-    )
-    db = [row[0] for row in cur.fetchall()]
-    print("Databases: ", db)
-    for name in db:
+def ensure_user_database_revoked(cur, username, dbs):
+    for name in dbs:
         execQuery(
             cur,
             "REVOKE ALL PRIVILEGES ON DATABASE {name} FROM {user};",
@@ -362,8 +366,8 @@ def ensure_user_schema_revoked(cur, username):
             "SELECT DISTINCT table_schema FROM information_schema.table_privileges WHERE grantee = {user};"
         ).format(user=sql.Literal(username))
     )
-    schema = [row[0] for row in cur.fetchall()] + ["public"]
-    print("Schemas: ", schema)
+    schema = [row[0] for row in cur.fetchall()]
+    logging.info("Determined schemas to revoke permission: %s", schema)
     for name in schema:
         execQuery(
             cur,
@@ -379,7 +383,7 @@ def ensure_user_schema_revoked(cur, username):
         )
         execQuery(
             cur,
-            "REVOKE TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA {name} FROM {user};",
+            "REVOKE ALL ON ALL TABLES IN SCHEMA {name} FROM {user};",
             name=sql.Identifier(name),
             user=sql.Identifier(username),
         )
@@ -400,10 +404,38 @@ def ensure_user_removed(server, user, password, secretArn):
         dbname="postgres",
         password=password,
     ) as conn, conn.cursor() as cur:
-        logger.info("Successfully connected to PostgreSQL")
+        logger.info("Successfully connected to PostgreSQL database '%s'", "postgres")
+        cur.execute(
+            sql.SQL(
+                "select datname from pg_catalog.pg_database where has_database_privilege({user}, datname, 'connect')"
+            ).format(user=sql.Literal(secret["username"]))
+        )
+        dbs = [row[0] for row in cur.fetchall()]
+        ensure_user_database_revoked(cur, secret["username"], dbs)
+    for dbname in dbs:
         try:
-            ensure_user_database_revoked(cur, secret["username"])
-            ensure_user_schema_revoked(cur, secret["username"])
+            with psycopg2.connect(
+                host=instance["Endpoint"]["Address"],
+                port=instance["Endpoint"]["Port"],
+                user=user,
+                dbname=dbname,
+                password=password,
+            ) as conn, conn.cursor() as cur:
+                logger.info(
+                    "Successfully connected to PostgreSQL database '%s'", dbname
+                )
+                ensure_user_schema_revoked(cur, secret["username"])
+        except Exception as e:
+            logging.warn("Failed to revoke permission in database '%s': %s", dbname, e)
+    with psycopg2.connect(
+        host=instance["Endpoint"]["Address"],
+        port=instance["Endpoint"]["Port"],
+        user=user,
+        # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
+        dbname="postgres",
+        password=password,
+    ) as conn, conn.cursor() as cur:
+        try:
             execQuery(
                 cur,
                 "DROP USER IF EXISTS {user};",
@@ -425,7 +457,6 @@ def handler(event, context):
 
         server = properties["ServerName"]
         # bucket = properties["Bucket"]
-        db = properties["Db"]
         schema = properties["Schema"]
         dbUser = properties["DbUser"]
         secretArn = properties["secretArn"]
@@ -452,7 +483,7 @@ def handler(event, context):
             logging.info("Custom log exporting configured successfully")
             ensure_instance_restarted(server, configureLoggingRestart)
             logging.info("Successfully ensured instance restarted (if allowed)")
-            ensure_user_created(server, db, schema, dbUser, dbPassword, secretArn)
+            ensure_user_created(server, schema, dbUser, dbPassword, secretArn)
 
             return cfnresponse.send(
                 event,
