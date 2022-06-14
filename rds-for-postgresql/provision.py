@@ -8,6 +8,7 @@ import boto3
 import psycopg2
 from itertools import groupby
 from psycopg2 import sql
+from collections import namedtuple
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
 import os
@@ -280,8 +281,11 @@ def execQuery(cur, text, noEcho=False, **parameters):
     )
     return cur.execute(q)
 
+SchemaItem = namedtuple('SchemaItem', ['db_name', 'schema'])
 
 def ensure_user_created(server, schema, user, password, secretArn):
+    schema_items = [SchemaItem(*x.split(".")) for x in schema]
+
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
@@ -308,8 +312,20 @@ def ensure_user_created(server, schema, user, password, secretArn):
         except psycopg2.errors.DuplicateObject:
             logging.warn("User '%s' already exist in instance", secret["username"])
             conn.rollback()
-    for db_name, db_schemas in groupby(schema, key=lambda x: x.split(".")[0]):
-        db_schemas = list(x.split(".")[1] for x in db_schemas)
+        for x in schema_items:
+            if not x.db_name == "*":
+                continue 
+            cur.execute(
+                sql.SQL(
+                    "select datname from pg_catalog.pg_database where datallowconn = true and has_database_privilege({user}, datname, 'connect')"
+                ).format(user=sql.Literal(user))
+            )
+            new_items = [SchemaItem(row[0], x.schema) for row in cur.fetchall()]
+            logging.info("Resolve placeholder in '*' to new schemas: %s", new_items)
+            schema_items.extend(new_items)
+    for db_name, db_schemas in groupby(schema_items, key=lambda x: x.db_name):
+        if db_name == '*': 
+            continue
         with psycopg2.connect(
             host=instance["Endpoint"]["Address"],
             port=instance["Endpoint"]["Port"],
@@ -323,29 +339,31 @@ def ensure_user_created(server, schema, user, password, secretArn):
                 name=sql.Identifier(db_name),
                 user=sql.Identifier(secret["username"]),
             )
-            if "*" in db_schemas:
+            for x in db_schemas:
+                if not x.schema == "*":
+                    continue 
                 cur.execute(
-                    "SELECT schema_name FROM information_schema.schemata where schema_name not in ('pg_catalog', 'information_schema');"
+                    "SELECT nspname FROM pg_catalog.pg_namespace where nspname not like 'pg_%';"
                 )
-                db_schemas = [row[0] for row in cur.fetchall()]
+                db_schemas = [SchemaItem(x.db_name, row[0]) for row in cur.fetchall()]
                 logging.info("Resolve placeholder '*' to schemas: %s", db_schemas)
-            for schema_name in db_schemas:
+            for schema_item in db_schemas:
                 execQuery(
                     cur,
                     "GRANT USAGE ON SCHEMA {name} TO {user};",
-                    name=sql.Identifier(schema_name),
+                    name=sql.Identifier(schema_item.schema),
                     user=sql.Identifier(secret["username"]),
                 )
                 execQuery(
                     cur,
                     "GRANT SELECT ON ALL TABLES IN SCHEMA {name} TO {user};",
-                    name=sql.Identifier(schema_name),
+                    name=sql.Identifier(schema_item.schema),
                     user=sql.Identifier(secret["username"]),
                 )
                 execQuery(
                     cur,
                     "ALTER DEFAULT PRIVILEGES IN SCHEMA {name} GRANT SELECT ON TABLES TO {user};",
-                    name=sql.Identifier(schema_name),
+                    name=sql.Identifier(schema_item.schema),
                     user=sql.Identifier(secret["username"]),
                 )
 
@@ -362,8 +380,10 @@ def ensure_user_database_revoked(cur, username, dbs):
 
 def ensure_user_schema_revoked(cur, username):
     cur.execute(
+        # PostgreSQL recommends avoid schema pg_ as reserved for system catalog schema
+        # References: https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-CATALOG
         sql.SQL(
-            "SELECT DISTINCT table_schema FROM information_schema.table_privileges WHERE grantee = {user};"
+            "SELECT nspname FROM pg_catalog.pg_namespace where nspname not like 'pg_%';"
         ).format(user=sql.Literal(username))
     )
     schema = [row[0] for row in cur.fetchall()]
@@ -407,7 +427,7 @@ def ensure_user_removed(server, user, password, secretArn):
         logger.info("Successfully connected to PostgreSQL database '%s'", "postgres")
         cur.execute(
             sql.SQL(
-                "select datname from pg_catalog.pg_database where has_database_privilege({user}, datname, 'connect')"
+                "select datname from pg_catalog.pg_database where datallowconn = true and has_database_privilege({user}, datname, 'connect')"
             ).format(user=sql.Literal(secret["username"]))
         )
         dbs = [row[0] for row in cur.fetchall()]
@@ -426,7 +446,7 @@ def ensure_user_removed(server, user, password, secretArn):
                 )
                 ensure_user_schema_revoked(cur, secret["username"])
         except Exception as e:
-            logging.warn("Failed to revoke permission in database '%s': %s", dbname, e)
+            logging.warn("Failed to revoke permission in database '%s': %s", dbname, e, exc_info=True)
     with psycopg2.connect(
         host=instance["Endpoint"]["Address"],
         port=instance["Endpoint"]["Port"],
@@ -508,7 +528,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
-        logging.error(e)
+        logging.error(e, exc_info=True)
         return cfnresponse.send(
             event,
             context,
