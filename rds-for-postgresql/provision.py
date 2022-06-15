@@ -300,17 +300,13 @@ def ensure_user_created(server, schema, user, password, secretArn):
         password=password,
     ) as conn, conn.cursor() as cur:
         logger.info("Successfully connected to PostgreSQL")
-        try:
-            execQuery(
-                cur,
-                "CREATE USER {user} WITH encrypted password {password}",
-                noEcho=True,
-                user=sql.Identifier(secret["username"]),
-                password=sql.Literal(secret["password"]),
-            )
-        except psycopg2.errors.DuplicateObject:
-            logging.warn("User '%s' already exist in instance", secret["username"])
-            conn.rollback()
+        execQuery(
+            cur,
+            "CREATE USER {user} WITH encrypted password {password}",
+            noEcho=True,
+            user=sql.Identifier(secret["username"]),
+            password=sql.Literal(secret["password"]),
+        )
         for x in schema:
             if not x.db_name == "*":
                 continue 

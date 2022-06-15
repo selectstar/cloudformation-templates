@@ -25,6 +25,11 @@
             "Description": "Password of PostgreSQL user used to connection for provision access for Select Star.",
             "AllowedPattern": ".+"
         },
+        "ProvisionAccessUserName": {
+            "Type": "String",
+            "Default": "selectstar",
+            "Description": "Username for Select Star to that will be created and used to connect to your databases."
+        },
         "ExternalId": {
             "Description": "The Select Star external ID to authenticate your AWS account. Do not change or share this.",
             "MinLength": "1",
@@ -79,7 +84,6 @@
                     },
                     "Parameters": [
                         "ServerName",
-                        "Schema",
                         "DbUser",
                         "DbPassword"
                     ]
@@ -90,7 +94,9 @@
                     },
                     "Parameters": [
                         "ConfigureLogging",
-                        "ConfigureLoggingRestart"
+                        "ConfigureLoggingRestart",
+                        "ProvisionAccessUserName",
+                        "Schema"
                     ]
                 },
                 {
@@ -117,6 +123,9 @@
                 },
                 "ConfigureLoggingRestart": {
                     "default": "Restart Server (if necessary to apply changes)"
+                },
+                "ProvisionAccessUserName": {
+                    "default": "Provided user name for Select Star to access your metadata"
                 }
             }
         }
@@ -129,7 +138,9 @@
                     "Fn::Sub": "${AWS::StackName}/selectstar-user-credentials"
                 },
                 "GenerateSecretString": {
-                    "SecretStringTemplate": "{\"username\": \"selectstar\"}",
+                    "SecretStringTemplate":{
+                        "Fn::Sub": "{\"username\": \"${ProvisionAccessUserName}\"}"
+                    },
                     "GenerateStringKey": "password",
                     "PasswordLength": 20,
                     "ExcludeCharacters": "\"@/\\"
