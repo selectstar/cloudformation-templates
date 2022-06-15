@@ -7,9 +7,14 @@
             "AllowedPattern": "[\\w-]+",
             "Description": "Also known as \"Cluster identifier\" by AWS."
         },
+        "Grant": {
+            "Description": "Comma separated list of Redshift database to grant access for Select Star. Accept \"*\" for all databases.",
+            "Type": "CommaDelimitedList",
+            "Default": "*"
+        },
         "Db": {
-            "Description": "Comma separated list of Redshift database to grant access for Select Star.",
-            "Type": "CommaDelimitedList"
+            "Description": "Database used for provisioning connection by Select Star.",
+            "Type": "String"
         },
         "DbUser": {
             "Type": "String",
@@ -73,6 +78,7 @@
                     },
                     "Parameters": [
                         "Cluster",
+                        "Grant",
                         "Db",
                         "DbUser"
                     ]
@@ -103,7 +109,10 @@
                     "default": "Redshift cluster name"
                 },
                 "Db": {
-                    "default": "Redshift databases"
+                    "default": "Redshift connection databases"
+                },
+                "Grant": {
+                    "default": "Redshift granted access databases"
                 },
                 "ConfigureS3Logging": {
                     "default": "Configure S3 logging (if disabled)"
@@ -479,6 +488,9 @@
                 "Db": {
                     "Ref": "Db"
                 },
+                "Grant": {
+                    "Ref": "Grant"
+                },
                 "DbUser": {
                     "Ref": "DbUser"
                 },
@@ -525,7 +537,7 @@
                     ]
                 },
                 "Items": {
-                    "Ref": "Db"
+                    "Ref": "Grant"
                 },
                 "Prefix": {
                     "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${Cluster}/"

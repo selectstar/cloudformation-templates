@@ -16,7 +16,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-if 'LAMBDA_TASK_ROOT' in os.environ:
+if "LAMBDA_TASK_ROOT" in os.environ:
     xray_recorder.configure(service="Select Star & AWS RDS for PostgreSQL integration")
     patch_all()
 
@@ -286,6 +286,15 @@ def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
         )
 
 
+def fetch_databases(cluster, db, dbUser):
+    for resp in redshiftdata_client.get_paginator("list_databases").paginate(
+        ClusterIdentifier=cluster,
+        Database=db,
+        DbUser=dbUser,
+    ):
+        yield from resp["Databases"]
+
+
 def handler(event, context):
     logger.info(json.dumps(event))
     try:
@@ -294,13 +303,18 @@ def handler(event, context):
         cluster = properties["Cluster"]
         bucket = properties.get("Bucket", None)
         db = properties["Db"]
+        grant = properties["Grant"]
         dbUser = properties["DbUser"]
         configureS3Logging = properties["ConfigureS3Logging"] == "true"
         configureS3LoggingRestart = properties["ConfigureS3LoggingRestart"] == "true"
 
+        if "*" in grant:
+            grant = list(fetch_databases(cluster, db, dbUser))
+            logger.info("Resolved '*' in grant to: %s", grant)
+
         if event["RequestType"] == "Delete":
             try:
-                for dbname in db:
+                for dbname in grant:
                     for table in TABLES:
                         execQuery(
                             cluster,
@@ -308,7 +322,7 @@ def handler(event, context):
                             dbUser,
                             f"revoke all on {table} from selectstar;",
                         )
-                execQuery(cluster, db[0], dbUser, "drop user selectstar;")
+                execQuery(cluster, db, dbUser, "drop user selectstar;")
             except Exception as e:
                 logging.warn("User could not be removed")
 
@@ -328,12 +342,16 @@ def handler(event, context):
         else:
             security_group_id, endpoint_port = ensure_valid_cluster(cluster)
             logging.info("Ćluster validated successfully")
+
             ensure_iam_role(cluster, role)
             logging.info("IAM role configured successfully")
+
             logging_bucket = ensure_logging_enabled(cluster, configureS3Logging, bucket)
             logging.info("S3 logging configured successfully")
+
             ensure_custom_parameter_group(cluster, configureS3Logging)
             logging.info("Ensured a custom parameter group")
+
             ensure_user_activity_enabled(cluster, configureS3Logging)
             logging.info("Ensured a user activity enabled")
 
@@ -345,7 +363,7 @@ def handler(event, context):
                     user_stmt = "create user selectstar with password disable syslog access unrestricted;"
                     execQuery(
                         cluster,
-                        db[0],
+                        db,
                         dbUser,
                         user_stmt,
                     )
@@ -355,7 +373,7 @@ def handler(event, context):
                     )
                     pass
                     # ignore failure that user exist
-                for dbname in db:
+                for dbname in grant:
                     for table in TABLES:
                         execQuery(
                             cluster,
@@ -366,7 +384,7 @@ def handler(event, context):
             except DataException:
                 raise
             except Exception as e:
-                logger.error(e)
+                logger.error(e, exc_info=True)
                 return cfnresponse.send(
                     event,
                     context,
@@ -388,6 +406,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except DataException as e:
+        logging.error(e, exc_info=True)
         return cfnresponse.send(
             event,
             context,
@@ -398,7 +417,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
-        logging.error(e)
+        logging.error(e, exc_info=True)
         return cfnresponse.send(
             event,
             context,
