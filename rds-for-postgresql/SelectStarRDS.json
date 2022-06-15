@@ -7,13 +7,10 @@
             "AllowedPattern": "[\\w-]+",
             "Description": "Also known as \"DB identifier\" by AWS."
         },
-        "Db": {
-            "Description": "Comma separated list of PostgreSQL databases to grant access for Select Star.",
-            "Type": "CommaDelimitedList"
-        },
         "Schema": {
-            "Description": "Comma separated list of PostgreSQL schemas to grant access for Select Star.",
-            "Type": "CommaDelimitedList"
+            "Description": "Comma separated list of PostgreSQL schemas in format <database>.<schema> to grant access for Select Star. ",
+            "Type": "CommaDelimitedList",
+            "AllowedPattern": "([^.,]+\\.[^.,]+)(,[^.,]+\\.[^.,]+)*"
         },
         "DbUser": {
             "Type": "String",
@@ -81,7 +78,6 @@
                     },
                     "Parameters": [
                         "ServerName",
-                        "Db",
                         "Schema",
                         "DbUser",
                         "DbPassword"
@@ -111,9 +107,6 @@
             "ParameterLabels": {
                 "ServerName": {
                     "default": "RDS server name"
-                },
-                "Db": {
-                    "default": "PostgreSQL databases granted"
                 },
                 "Schema": {
                     "default": "PostgreSQL schema granted"
@@ -335,9 +328,6 @@
                 },
                 "ServerName": {
                     "Ref": "ServerName"
-                },
-                "Db": {
-                    "Ref": "Db"
                 },
                 "Schema": {
                     "Ref": "Schema"
