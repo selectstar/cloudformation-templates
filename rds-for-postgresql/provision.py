@@ -284,7 +284,6 @@ def execQuery(cur, text, noEcho=False, **parameters):
 SchemaItem = namedtuple('SchemaItem', ['db_name', 'schema'])
 
 def ensure_user_created(server, schema, user, password, secretArn):
-    schema_items = [SchemaItem(*x.split(".")) for x in schema]
 
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
@@ -312,7 +311,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
         except psycopg2.errors.DuplicateObject:
             logging.warn("User '%s' already exist in instance", secret["username"])
             conn.rollback()
-        for x in schema_items:
+        for x in schema:
             if not x.db_name == "*":
                 continue 
             cur.execute(
@@ -322,8 +321,8 @@ def ensure_user_created(server, schema, user, password, secretArn):
             )
             new_items = [SchemaItem(row[0], x.schema) for row in cur.fetchall()]
             logging.info("Resolve placeholder in '*' to new schemas: %s", new_items)
-            schema_items.extend(new_items)
-    for db_name, db_schemas in groupby(schema_items, key=lambda x: x.db_name):
+            schema.extend(new_items)
+    for db_name, db_schemas in groupby(schema, key=lambda x: x.db_name):
         if db_name == '*': 
             continue
         with psycopg2.connect(
@@ -477,7 +476,7 @@ def handler(event, context):
 
         server = properties["ServerName"]
         # bucket = properties["Bucket"]
-        schema = properties["Schema"]
+        schema = [SchemaItem(*x.split(".")) for x in properties["Schema"].split(',')]
         dbUser = properties["DbUser"]
         secretArn = properties["secretArn"]
         configureLogging = properties["ConfigureLogging"] == "true"

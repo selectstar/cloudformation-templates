@@ -9,7 +9,7 @@
         },
         "Schema": {
             "Description": "Comma separated list of PostgreSQL schemas in format <database>.<schema> to grant access for Select Star. ",
-            "Type": "CommaDelimitedList",
+            "Type": "String",
             "AllowedPattern": "([^.,]+\\.[^.,]+)(,[^.,]+\\.[^.,]+)*"
         },
         "DbUser": {
