@@ -8,8 +8,9 @@
             "Description": "Also known as \"DB identifier\" by AWS."
         },
         "Schema": {
-            "Description": "Comma separated list of PostgreSQL schemas in format <database>.<schema> to grant access for Select Star. ",
-            "Type": "CommaDelimitedList",
+            "Description": "Comma separated list of PostgreSQL schemas in format '<database>.<schema>' to grant access for Select Star. You might use wildcard eg. '*.*'.",
+            "Type": "String",
+            "Default": "*.*",
             "AllowedPattern": "([^.,]+\\.[^.,]+)(,[^.,]+\\.[^.,]+)*"
         },
         "DbUser": {
