@@ -2,6 +2,7 @@ name: Test & Build & Push
 permissions:
   id-token: write # required for aws-actions/configure-aws-credentials@v1
   contents: read # required for actions/checkout@v2
+  actions: read
 on:
   push:
     # Sequence of patterns matched against refs/heads
@@ -26,12 +27,24 @@ jobs:
           aws-region: us-east-2
       - name: Validate templates
         run: ./.github/scripts/validate-templates.sh
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          job_name: Test
+          fields: repo,job,workflow,ref
+          mention: S03KPC0D63V # @devops
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          MATRIX_CONTEXT: ${{ toJson(matrix) }}
+        if: failure() && github.ref == 'refs/heads/main'
   deploy_testing:
     needs: 
     - test
     name: Deploy to preview for testing
     # deploy always
     uses: ./.github/workflows/deploy.yml
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     with:
       aws-account-id: "591617137652"
       aws-region: us-east-2
@@ -43,10 +56,13 @@ jobs:
     name: Deploy to production
     if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/production-')
     uses: ./.github/workflows/deploy.yml
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     with:
       aws-account-id: "672751098944"
       aws-region: us-east-2
       aws-bucket-name: select-star-production-cloudformation
+      slack-job-name: "Deploy to production / deploy"
 
   deploy_staging:
     needs:
@@ -54,11 +70,13 @@ jobs:
     name: Deploy to staging
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/staging-')
     uses: ./.github/workflows/deploy.yml
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     with:
       aws-account-id: "672751098944"
       aws-region: us-east-2
       aws-bucket-name: select-star-staging-cloudformation
-
+      slack-job-name: "Deploy to staging / deploy"
 
   deploy_preview:
     needs:
@@ -66,7 +84,10 @@ jobs:
     name: Deploy to preview
     if: startsWith(github.ref, 'refs/tags/preview-')
     uses: ./.github/workflows/deploy.yml
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     with:
       aws-account-id: "672751098944"
       aws-region: us-east-2
       aws-bucket-name: select-star-preview-cloudformation
+      slack-job-name: "Deploy to preview / deploy"
