@@ -87,6 +87,27 @@ def execQuery(cluster, db, user, statement):
         raise e
 
 
+def ensure_cluster_state(cluster):
+    try:
+        instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)["Clusters"]
+    except botocore.exceptions.ClientError as err:
+        if err.response["Error"]["Code"] == "ClusterNotFound":
+            raise DataException(
+                f"Operation failed. Cluster '{cluster}' not found. Verify DB instance name."
+            )
+    instance = instances[0]
+
+    logging.info("Cluster status is '%s'. ", instance["ClusterStatus"])
+    if instance["ClusterStatus"] == "paused":
+        raise DataException(
+            f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Resume the cluster and try again."
+        )
+    if instance["ClusterStatus"] != "available":
+        raise DataException(
+            f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Update the cluster configurations and try again."
+        )
+    logging.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
+
 def ensure_valid_cluster(cluster):
     try:
         instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
@@ -99,16 +120,6 @@ def ensure_valid_cluster(cluster):
             )
         raise err
     instance = instances[0]
-    logging.info("Cluster status is '%s'. ", instance["ClusterStatus"])
-    if instance["ClusterStatus"] == "paused":
-        raise DataException(
-            f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Resume the cluster and try again."
-        )
-    if instance["ClusterStatus"] != "available":
-        raise DataException(
-            f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Update the cluster configurations and try again."
-        )
-    logging.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
     if not instance["PubliclyAccessible"]:
         raise DataException(
             "Cluster must be publicly available. Update the cluster configurations (https://aws.amazon.com/premiumsupport/knowledge-center/redshift-cluster-private-public/) and try again."
@@ -308,6 +319,8 @@ def handler(event, context):
         configureS3Logging = properties["ConfigureS3Logging"] == "true"
         configureS3LoggingRestart = properties["ConfigureS3LoggingRestart"] == "true"
 
+        ensure_cluster_state(cluster)
+
         if "*" in grant:
             grant = list(fetch_databases(cluster, db, dbUser))
             logger.info("Resolved '*' in grant to: %s", grant)
@@ -390,7 +403,7 @@ def handler(event, context):
                     context,
                     cfnresponse.FAILED,
                     {},
-                    reason="Execute query failed. See the details in CloudWatch Log Stream: {}".format(
+                    reason="Execute query failed ({}). See the details in CloudWatch Log Stream: {}".format(
                         str(e), context.log_stream_name
                     ),
                 )
