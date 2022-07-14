@@ -204,6 +204,12 @@
                 }
             }
         },
+        "LambdaBucket": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "AccessControl": "Private"
+            }
+        },
         "CrossAccountRolePolicy": {
             "Type": "AWS::IAM::Policy",
             "Properties": {
@@ -423,6 +429,34 @@
                                         "iam:PassRole"
                                     ],
                                     "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:*"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}",
+                                                {
+                                                    "BucketName": {
+                                                        "Ref": "LambdaBucket"
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Sub": [
+                                                "arn:aws:s3:::${BucketName}/*",
+                                                {
+                                                    "BucketName": {
+                                                        "Ref": "LambdaBucket"
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
                                 }
                             ]
                         }
@@ -439,8 +473,10 @@
             "Properties": {
                 "Timeout": 300,
                 "Code": {
-                    "S3Bucket": "cf-templates-pp3cips1o7jf-us-east-2",
-                    "S3Key": "redshift/deployment-package.zip"
+                    "Fn::GetAtt": [
+                        "LambdaCopy",
+                        "Copy"
+                    ]
                 },
                 "Handler": "provision.handler",
                 "Role": {
@@ -510,8 +546,10 @@
             "Properties": {
                 "Timeout": 300,
                 "Code": {
-                    "S3Bucket": "cf-templates-pp3cips1o7jf-us-east-2",
-                    "S3Key": "redshift/deployment-package.zip"
+                    "Fn::GetAtt": [
+                        "LambdaCopy",
+                        "Copy"
+                    ]
                 },
                 "Handler": "transform.handler",
                 "Role": {
@@ -542,6 +580,44 @@
                 "Prefix": {
                     "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${Cluster}/"
                 }
+            }
+        },
+        "LambdaCopyFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Timeout": 300,
+                "Code": {
+                    "ZipFile": "import json\nimport logging\nimport cfnresponse\nimport boto3\n\nlogging.basicConfig(\n    format=\"%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s\",\n    datefmt=\"%Y-%m-%d:%H:%M:%S\",\n    level=logging.INFO,\n)\n\nlogger = logging.getLogger(__name__)\nlogger.setLevel(logging.INFO)\n\ns3_client = boto3.client(\"s3\")\n\n\ndef handler(event, context):\n    logger.info(json.dumps(event))\n    try:\n        properties = event[\"ResourceProperties\"]\n        srcBucket = properties[\"srcBucket\"]\n        srcKey = properties[\"srcKey\"]\n        dstBucket = properties[\"dstBucket\"]\n        dstKey = properties[\"dstKey\"]\n        if event[\"RequestType\"] == \"Delete\":\n            s3_client.delete_object(\n                Bucket=dstBucket,\n                Key=dstKey,\n            )\n            cfnresponse.send(\n                event, context, cfnresponse.SUCCESS, {\"Data\": \"Delete complete\"}\n            )\n        else:\n            s3_client.copy_object(\n                ACL=\"public-read\",\n                Bucket=dstBucket,\n                CopySource=f\"{srcBucket}/{srcKey}\",\n                Key=dstKey,\n            )\n            return cfnresponse.send(\n                event,\n                context,\n                cfnresponse.SUCCESS,\n                {\n                    \"result\": \"Copy complete\",\n                    \"Copy\": {\"S3Bucket\": dstBucket, \"S3Key\": dstKey},\n                },\n                reason=\"Create complete\",\n            )\n    except Exception as e:\n        logging.error(e)\n        return cfnresponse.send(\n            event,\n            context,\n            cfnresponse.FAILED,\n            {},\n            reason=\"Something failed. See the details in CloudWatch Log Stream: {}\".format(\n                context.log_stream_name\n            ),\n        )\n"
+                },
+                "Handler": "index.handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "LambdaRole",
+                        "Arn"
+                    ]
+                },
+                "Runtime": "python3.9",
+                "TracingConfig": {
+                    "Mode": "Active"
+                }
+            }
+        },
+        "LambdaCopy": {
+            "Type": "Custom::LambdaCopy",
+            "Version": "1.0",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "LambdaCopyFunction",
+                        "Arn"
+                    ]
+                },
+                "srcBucket": "cf-templates-pp3cips1o7jf-us-east-2",
+                "srcKey": "redshift/deployment-package.zip",
+                "dstBucket": {
+                    "Ref": "LambdaBucket"
+                },
+                "dstKey": "deployment-package.zip"
             }
         },
         "InboundPrimaryRule": {
