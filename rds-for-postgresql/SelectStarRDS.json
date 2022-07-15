@@ -319,6 +319,13 @@
                                 {
                                     "Effect": "Allow",
                                     "Action": [
+                                        "s3:GetObject"
+                                    ],
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
                                         "secretsmanager:GetResourcePolicy",
                                         "secretsmanager:GetSecretValue",
                                         "secretsmanager:DescribeSecret",
