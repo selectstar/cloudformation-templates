@@ -65,18 +65,6 @@ workflows:
             - oidc
           requires:
             - test
-          name: deploy chart on testing
-          aws-role-arn: arn:aws:iam::591617137652:role/circleci-selectstar-cloudformation-templates
-          aws-bucket-name: select-star-dev-adam-cloudformation
-          filters: &filter-testing
-            tags:
-              only: /.*/
-
-      - deploy:
-          context:
-            - oidc
-          requires:
-            - test
           name: deploy chart on preview
           aws-role-arn: arn:aws:iam::672751098944:role/circleci-selectstar-cloudformation-templates
           aws-bucket-name: select-star-preview-cloudformation
