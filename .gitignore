@@ -3,3 +3,5 @@
 .vscode
 **/package
 **/*.zip
+terraform.tfstate*
+.terraform

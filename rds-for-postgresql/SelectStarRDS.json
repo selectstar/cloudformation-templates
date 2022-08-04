@@ -279,14 +279,7 @@
                                         "rds:*",
                                         "rds-db:*"
                                     ],
-                                    "Resource": [
-                                        {
-                                            "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ServerName}"
-                                        },
-                                        {
-                                            "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:pg:*"
-                                        }
-                                    ]
+                                    "Resource": "*"
                                 },
                                 {
                                     "Effect": "Allow",

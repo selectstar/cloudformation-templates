@@ -37,18 +37,6 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           MATRIX_CONTEXT: ${{ toJson(matrix) }}
         if: failure() && github.ref == 'refs/heads/main'
-  deploy_testing:
-    needs: 
-    - test
-    name: Deploy to preview for testing
-    # deploy always
-    uses: ./.github/workflows/deploy.yml
-    secrets:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-    with:
-      aws-account-id: "591617137652"
-      aws-region: us-east-2
-      aws-bucket-name: select-star-dev-adam-cloudformation
 
   deploy_production:
     needs:
