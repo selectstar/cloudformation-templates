@@ -506,7 +506,7 @@
             },
             "Description": "The ARN value of the Cross-Account Role with IAM read-only permissions. Add this ARN value to Select Star."
         },
-        "secretArn": {
+        "SecretArn": {
             "Value": {
                 "Ref": "DatabaseSecret"
             },
