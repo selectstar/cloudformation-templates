@@ -61,18 +61,27 @@ def retry_aws(retries=3, codes=[]):
     return outer
 
 
-def ensure_valid_cluster_engine(server):
+def fetch_instance(server):
     try:
         instances = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
             "DBInstances"
         ]
+        return instances[0]
     except botocore.exceptions.ClientError as err:
         if err.response["Error"]["Code"] == "DBInstanceNotFound":
             raise DataException(
                 f"Provisiong failed. DB instannce '{server}' not found. Verify DB instance name."
             )
         raise err
-    instance = instances[0]
+
+def determine_primary_server(server):
+    instance = fetch_instance(server) 
+    return instance.get(
+        "ReadReplicaSourceDBInstanceIdentifier", server
+    )
+
+def ensure_valid_cluster_engine(server):
+    instance = fetch_instance(server)
     if instance["Engine"] != "postgres":
         raise DataException(
             "Unsupported DB engine - required 'postgres'. Verify engine of DB instance."
@@ -281,7 +290,9 @@ def execQuery(cur, text, noEcho=False, **parameters):
     )
     return cur.execute(q)
 
-SchemaItem = namedtuple('SchemaItem', ['db_name', 'schema'])
+
+SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
+
 
 def ensure_user_created(server, schema, user, password, secretArn):
 
@@ -309,7 +320,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
         )
         for x in schema:
             if not x.db_name == "*":
-                continue 
+                continue
             cur.execute(
                 sql.SQL(
                     "select datname from pg_catalog.pg_database where datallowconn = true and has_database_privilege({user}, datname, 'connect')"
@@ -319,7 +330,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
             logging.info("Resolve placeholder in '*' to new schemas: %s", new_items)
             schema.extend(new_items)
     for db_name, db_schemas in groupby(schema, key=lambda x: x.db_name):
-        if db_name == '*': 
+        if db_name == "*":
             continue
         with psycopg2.connect(
             host=instance["Endpoint"]["Address"],
@@ -336,7 +347,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
             )
             for x in db_schemas:
                 if not x.schema == "*":
-                    continue 
+                    continue
                 cur.execute(
                     "SELECT nspname FROM pg_catalog.pg_namespace where nspname not like 'pg_%';"
                 )
@@ -441,7 +452,12 @@ def ensure_user_removed(server, user, password, secretArn):
                 )
                 ensure_user_schema_revoked(cur, secret["username"])
         except Exception as e:
-            logging.warn("Failed to revoke permission in database '%s': %s", dbname, e, exc_info=True)
+            logging.warn(
+                "Failed to revoke permission in database '%s': %s",
+                dbname,
+                e,
+                exc_info=True,
+            )
     with psycopg2.connect(
         host=instance["Endpoint"]["Address"],
         port=instance["Endpoint"]["Port"],
@@ -471,15 +487,16 @@ def handler(event, context):
         logger.info(json.dumps(event))
 
         server = properties["ServerName"]
-        # bucket = properties["Bucket"]
-        schema = [SchemaItem(*x.split(".")) for x in properties["Schema"].split(',')]
+
+        schema = [SchemaItem(*x.split(".")) for x in properties["Schema"].split(",")]
         dbUser = properties["DbUser"]
         secretArn = properties["secretArn"]
         configureLogging = properties["ConfigureLogging"] == "true"
         configureLoggingRestart = properties["ConfigureLoggingRestart"] == "true"
 
         if event["RequestType"] == "Delete":
-            ensure_user_removed(server, dbUser, dbPassword, secretArn)
+            primary_server = determine_primary_server(server)
+            ensure_user_removed(primary_server, dbUser, dbPassword, secretArn)
             logging.info("User removed successfully")
 
             cfnresponse.send(
@@ -487,6 +504,7 @@ def handler(event, context):
             )
         else:
             security_group_id, endpoint_port = ensure_valid_cluster_engine(server)
+            primary_server = determine_primary_server(server)
             ensure_custom_parameter_group(server, configureLogging)
             logging.info("Custom parameter group of instance configured successfully.")
             ensure_parameter_set(server, configureLogging, "log_statement", "all")
@@ -498,7 +516,8 @@ def handler(event, context):
             logging.info("Custom log exporting configured successfully")
             ensure_instance_restarted(server, configureLoggingRestart)
             logging.info("Successfully ensured instance restarted (if allowed)")
-            ensure_user_created(server, schema, dbUser, dbPassword, secretArn)
+            # read-only replicas needs updates user configuration on primary
+            ensure_user_created(primary_server, schema, dbUser, dbPassword, secretArn)
 
             return cfnresponse.send(
                 event,

@@ -29,3 +29,10 @@ terraform destroy
 ```
 
 If the removal of CloudFormation Stack fails, it is worth restarting the operation, because then the stack is deleted without the problematic resources (most likely due to the impossibility of correct `LambdaFunction` execution).
+
+To force CloudFormation Stack to recreate use:
+
+```bash
+terraform taint random_id.master-identifier
+terraform taint random_id.replica-identifier
+```
