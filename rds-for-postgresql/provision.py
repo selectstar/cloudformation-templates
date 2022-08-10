@@ -12,6 +12,7 @@ import httpx
 from collections import namedtuple
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
+import sentry_sdk
 import os
 import hashlib
 from contextlib import contextmanager
@@ -35,6 +36,13 @@ rds_client = boto3.client("rds")
 s3_client = boto3.client("s3")
 secret_client = boto3.client("secretsmanager")
 ec2_client = boto3.client("ec2")
+
+if "SENTRY_DSN" in os.environ:
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=0.0,
+    )
+    logger.info("Sentry DSN reporting initialized")
 
 
 class DataException(Exception):
@@ -74,7 +82,7 @@ def fetch_instance(server):
         if err.response["Error"]["Code"] == "DBInstanceNotFound":
             raise DataException(
                 f"Provisiong failed. DB instannce '{server}' not found. Verify DB instance name."
-            )
+            ) from err
         raise err
 
 
@@ -589,6 +597,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except DataException as e:
+        sentry_sdk.capture_exception(e)
         logger.error(e)
         return cfnresponse.send(
             event,
@@ -600,6 +609,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logging.error(e, exc_info=True)
         return cfnresponse.send(
             event,

@@ -1,7 +1,8 @@
 import json
 import logging
 import cfnresponse
-import boto3
+import os
+import sentry_sdk
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
@@ -11,6 +12,13 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+if "SENTRY_DSN" in os.environ:
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=0.0,
+    )
+    logger.info("Sentry DSN reporting initialized")
 
 
 def handler(event, context):
@@ -32,6 +40,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except Exception as e:
+        sentry_sdk.capture_exception(e)
         logging.error(e)
         return cfnresponse.send(
             event,

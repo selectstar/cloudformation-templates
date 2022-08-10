@@ -67,6 +67,11 @@
                 "false"
             ],
             "Description": "If true and logging changes made then the Redshift cluster can be restarted to apply changes. It is recommended to set the value \"true\"."
+        },
+        "SentryDsn": {
+            "Description": "URL for reporting any errors in provisioning execution. Don't change it unless you really know what you are doing.",
+            "Type": "String",
+            "Default": "https://14d65555628a4b6f84fcb83ef1511778@o407979.ingest.sentry.io/6639248"
         }
     },
     "Metadata": {
@@ -485,6 +490,13 @@
                         "Copy"
                     ]
                 },
+                "Environment": {
+                    "Variables": {
+                        "SENTRY_DSN": {
+                            "Ref": "SentryDsn"
+                        }
+                    }
+                },
                 "Handler": "provision.handler",
                 "Role": {
                     "Fn::GetAtt": [
@@ -564,6 +576,13 @@
                         "LambdaRole",
                         "Arn"
                     ]
+                },
+                "Environment": {
+                    "Variables": {
+                        "SENTRY_DSN": {
+                            "Ref": "SentryDsn"
+                        }
+                    }
                 },
                 "Runtime": "python3.9",
                 "TracingConfig": {

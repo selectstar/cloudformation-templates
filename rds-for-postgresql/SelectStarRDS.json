@@ -73,6 +73,11 @@
                 "3.23.108.85/32",
                 "3.20.56.105/32"
             ]
+        },
+        "SentryDsn": {
+            "Description": "URL for reporting any errors in provisioning execution. Don't change it unless you really know what you are doing.",
+            "Type": "String",
+            "Default": "https://14d65555628a4b6f84fcb83ef1511778@o407979.ingest.sentry.io/6639248"
         }
     },
     "Metadata": {
@@ -107,7 +112,8 @@
                         "ExternalId",
                         "IamPrincipal",
                         "CidrIpPrimary",
-                        "CidrIpSecondary"
+                        "CidrIpSecondary",
+                        "SentryDsn"
                     ]
                 }
             ],
@@ -394,6 +400,13 @@
                         "LambdaCopy",
                         "Copy"
                     ]
+                },
+                "Environment": {
+                    "Variables": {
+                        "SENTRY_DSN": {
+                            "Ref": "SentryDsn"
+                        }
+                    }
                 },
                 "Role": {
                     "Fn::GetAtt": [
