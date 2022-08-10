@@ -8,11 +8,13 @@ import boto3
 import psycopg2
 from itertools import groupby
 from psycopg2 import sql
+import httpx
 from collections import namedtuple
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
 import os
 import hashlib
+from contextlib import contextmanager
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
@@ -32,6 +34,7 @@ logger.setLevel(logging.INFO)
 rds_client = boto3.client("rds")
 s3_client = boto3.client("s3")
 secret_client = boto3.client("secretsmanager")
+ec2_client = boto3.client("ec2")
 
 
 class DataException(Exception):
@@ -74,11 +77,11 @@ def fetch_instance(server):
             )
         raise err
 
+
 def determine_primary_server(server):
-    instance = fetch_instance(server) 
-    return instance.get(
-        "ReadReplicaSourceDBInstanceIdentifier", server
-    )
+    instance = fetch_instance(server)
+    return instance.get("ReadReplicaSourceDBInstanceIdentifier", server)
+
 
 def ensure_valid_cluster_engine(server):
     instance = fetch_instance(server)
@@ -132,7 +135,7 @@ def ensure_custom_parameter_group(server, configureLogging):
             None,
         )
         if not family:
-            raise Exception(
+            raise DataException(
                 "Configure logging failed."
                 "Unable to determine db parameter group family for cluster."
             )
@@ -294,22 +297,81 @@ def execQuery(cur, text, noEcho=False, **parameters):
 SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
 
 
-def ensure_user_created(server, schema, user, password, secretArn):
+@contextmanager
+def connect_instance(instance, user, dbname, password):
+    """
+    Create connection & cursor for AWS RDS for PostgreSQL
 
+    It also temporary open security group ingress to allow this connection
+    """
+    ip = httpx.get("https://httpbin.org/ip").json()["origin"]
+    securityGroupId = next(
+        x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]
+    )
+    port = instance["Endpoint"]["Port"]
+    try:
+        security_groups_rules = ec2_client.authorize_security_group_ingress(
+            GroupId=securityGroupId,
+            IpPermissions=[
+                {
+                    "IpRanges": [
+                        {
+                            "CidrIp": f"{ip}/32",
+                            "Description": "Temporary access to provision Select Star integration",
+                        },
+                    ],
+                    "IpProtocol": "tcp",
+                    "FromPort": port,
+                    "ToPort": port,
+                }
+            ],
+        )["SecurityGroupRules"]
+        rules_ids = [rule["SecurityGroupRuleId"] for rule in security_groups_rules]
+        logging.info(
+            "Added temporary ingress rule to enable access from '%s' to '%s' (port: %s): %s",
+            ip,
+            securityGroupId,
+            port,
+            rules_ids,
+        )
+    except botocore.exceptions.ClientError as err:
+        # no need to add a new rule, it is there
+        if err.response["Error"]["Code"] == "InvalidPermission.Duplicate":
+            logging.warn("Temporary ingress rule to enable access exist. Skipping")
+            security_groups_rules = []
+        else:
+            raise err
+    with psycopg2.connect(
+        host=instance["Endpoint"]["Address"],
+        port=instance["Endpoint"]["Port"],
+        user=user,
+        dbname=dbname,
+        password=password,
+        connect_timeout=10,
+    ) as conn, conn.cursor() as cur:
+        yield cur
+        if security_groups_rules:
+            ec2_client.revoke_security_group_ingress(
+                GroupId=securityGroupId,
+                SecurityGroupRuleIds=rules_ids,
+            )
+            logging.warn("Removed temporary ingress rules: %s", rules_ids)
+
+
+def ensure_user_created(server, schema, user, password, secretArn):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
     secret_response = secret_client.get_secret_value(SecretId=secretArn)
     secret = json.loads(secret_response["SecretString"])
     logging.info("Successfully retrieved & decoded secret: %s", secretArn)
-    with psycopg2.connect(
-        host=instance["Endpoint"]["Address"],
-        port=instance["Endpoint"]["Port"],
+    with connect_instance(
+        instance=instance,
         user=user,
         # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
         dbname="postgres",
         password=password,
-    ) as conn, conn.cursor() as cur:
+    ) as cur:
         logger.info("Successfully connected to PostgreSQL")
         execQuery(
             cur,
@@ -319,7 +381,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
             password=sql.Literal(secret["password"]),
         )
         for x in schema:
-            if not x.db_name == "*":
+            if x.db_name != "*":
                 continue
             cur.execute(
                 sql.SQL(
@@ -332,13 +394,12 @@ def ensure_user_created(server, schema, user, password, secretArn):
     for db_name, db_schemas in groupby(schema, key=lambda x: x.db_name):
         if db_name == "*":
             continue
-        with psycopg2.connect(
-            host=instance["Endpoint"]["Address"],
-            port=instance["Endpoint"]["Port"],
+        with connect_instance(
+            instance=instance,
             user=user,
             dbname=db_name,
             password=password,
-        ) as conn, conn.cursor() as cur:
+        ) as cur:
             execQuery(
                 cur,
                 "GRANT CONNECT ON DATABASE {name} TO {user};",
@@ -422,14 +483,13 @@ def ensure_user_removed(server, user, password, secretArn):
     secret_response = secret_client.get_secret_value(SecretId=secretArn)
     secret = json.loads(secret_response["SecretString"])
     logging.info("Successfully retrieved & decoded secret: %s", secretArn)
-    with psycopg2.connect(
-        host=instance["Endpoint"]["Address"],
-        port=instance["Endpoint"]["Port"],
+    with connect_instance(
+        instance=instance,
         user=user,
         # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
         dbname="postgres",
         password=password,
-    ) as conn, conn.cursor() as cur:
+    ) as cur:
         logger.info("Successfully connected to PostgreSQL database '%s'", "postgres")
         cur.execute(
             sql.SQL(
@@ -440,13 +500,12 @@ def ensure_user_removed(server, user, password, secretArn):
         ensure_user_database_revoked(cur, secret["username"], dbs)
     for dbname in dbs:
         try:
-            with psycopg2.connect(
-                host=instance["Endpoint"]["Address"],
-                port=instance["Endpoint"]["Port"],
+            with connect_instance(
+                instance=instance,
                 user=user,
                 dbname=dbname,
                 password=password,
-            ) as conn, conn.cursor() as cur:
+            ) as cur:
                 logger.info(
                     "Successfully connected to PostgreSQL database '%s'", dbname
                 )
@@ -458,14 +517,13 @@ def ensure_user_removed(server, user, password, secretArn):
                 e,
                 exc_info=True,
             )
-    with psycopg2.connect(
-        host=instance["Endpoint"]["Address"],
-        port=instance["Endpoint"]["Port"],
+    with connect_instance(
+        instance=instance,
         user=user,
         # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
         dbname="postgres",
         password=password,
-    ) as conn, conn.cursor() as cur:
+    ) as cur:
         try:
             execQuery(
                 cur,

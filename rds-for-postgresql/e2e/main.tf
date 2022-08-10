@@ -1,5 +1,5 @@
 variable "region" {
-  default     = "us-east-2"
+  default     = "eu-central-1"
   description = "AWS region"
 }
 
@@ -33,24 +33,11 @@ resource "aws_security_group" "security-group" {
   name   = var.name
   vpc_id = module.vpc.vpc_id
 
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
   lifecycle {
     # provision.py add a new ingress rules what we wanna ignore here
     ignore_changes = [
       ingress,
     ]
-  }
-
-  egress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
@@ -72,7 +59,11 @@ resource "random_string" "random" {
 
 resource "aws_s3_bucket" "cloudformation-bucket" {
   bucket_prefix = "e2e-test"
-  acl           = "public-read"
+}
+
+resource "aws_s3_bucket_acl" "cloudformation-bucket" {
+  bucket = aws_s3_bucket.cloudformation-bucket.id
+  acl    = "public-read"
 }
 
 resource "aws_s3_object" "cloudformation-object" {
@@ -90,15 +81,15 @@ locals {
 }
 
 resource "aws_db_instance" "db-master" {
-  identifier             = "${var.name}-master"
-  instance_class         = "db.t3.micro"
-  allocated_storage      = 5
-  engine                 = "postgres"
-  engine_version         = "14.2"
-  username               = "edu"
-  password               = random_string.random.result
-  db_subnet_group_name   = aws_db_subnet_group.subnet-group.name
-  vpc_security_group_ids = [aws_security_group.security-group.id]
+  identifier               = "${var.name}-master"
+  instance_class           = "db.t3.micro"
+  allocated_storage        = 5
+  engine                   = "postgres"
+  engine_version           = "14.2"
+  username                 = "edu"
+  password                 = random_string.random.result
+  db_subnet_group_name     = aws_db_subnet_group.subnet-group.name
+  vpc_security_group_ids   = [aws_security_group.security-group.id]
   publicly_accessible      = true
   skip_final_snapshot      = true
   delete_automated_backups = true
@@ -200,6 +191,23 @@ resource "aws_cloudformation_stack" "stack-replica" {
   template_url = local.template_url
 }
 
+data "http" "myip" {
+  url = "http://ipv4.icanhazip.com"
+}
+
+resource "aws_security_group_rule" "example" {
+  type              = "ingress"
+  from_port         = aws_db_instance.db-master.port
+  to_port           = aws_db_instance.db-master.port
+  protocol          = "tcp"
+  cidr_blocks       = ["${chomp(data.http.myip.body)}/32"]
+  security_group_id = aws_security_group.security-group.id
+  depends_on = [
+    aws_cloudformation_stack.stack-master,
+    aws_cloudformation_stack.stack-replica
+  ]
+}
+
 ## Validation
 data "aws_secretsmanager_secret_version" "master" {
   secret_id = aws_cloudformation_stack.stack-master.outputs.SecretArn
@@ -222,6 +230,7 @@ resource "null_resource" "connect-psql-master" {
       PGUSER     = local.master_username
       PGDATABASE = "postgres"
       PGHOST     = aws_db_instance.db-master.address
+      PGPORT     = aws_db_instance.db-master.port
     }
   }
 }
@@ -234,6 +243,7 @@ resource "null_resource" "connect-psql-replica" {
       PGUSER     = local.replica_username
       PGDATABASE = "postgres"
       PGHOST     = aws_db_instance.db-replica.address
+      PGPORT     = aws_db_instance.db-replica.port
     }
   }
 }

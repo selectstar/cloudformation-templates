@@ -1,7 +1,6 @@
 import copy_handler
 import provision
 import os
-import copy
 CLUSTER = "postgres-test-data"
 
 
@@ -31,7 +30,7 @@ if __name__ == "__main__":
         "ServiceToken": "arn:aws:lambda:us-east-2:123456789012:function:lambda-error-processor-primer-14ROR2T3JKU66",
         "secretArn": "arn:aws:secretsmanager:us-east-2:792169733636:secret:stack-integration/selectstar-user-credentials-bnZWSD",
         "ServerName": CLUSTER,
-        "Schema": ["*.*"],
+        "Schema": "*.*",
         "DbUser": "postgres",
         "DbPassword": os.environ.get("PG_PASSWORD"),
         "Region": "us-east-2",
@@ -50,7 +49,7 @@ if __name__ == "__main__":
     provision.ensure_parameter_set(server, configureLogging, "log_min_duration_statement", "0")
     provision.ensure_log_exporting_enabled(server, configureLogging)
     provision.ensure_instance_restarted(server, configureLoggingRestart)
-    provision.handler(get_event("Create", provision_resource), MockContext())
-    provision.handler(get_event("Delete", provision_resource), MockContext())
+    provision.handler(get_event("Create", {} | provision_resource), MockContext())
+    provision.handler(get_event("Delete", {} | provision_resource), MockContext())
     copy_handler.handler(get_event("Create", copy_resource), MockContext())
     copy_handler.handler(get_event("Delete", copy_resource), MockContext())
