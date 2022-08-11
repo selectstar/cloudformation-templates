@@ -2,13 +2,13 @@ import json
 import boto3
 import logging
 import time
-import urllib3
 import cfnresponse
 import botocore
 import boto3
 import os
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
+import sentry_sdk
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
@@ -35,6 +35,13 @@ logger.setLevel(logging.INFO)
 
 redshiftdata_client = boto3.client("redshift-data")
 redshift_client = boto3.client("redshift")
+
+if "SENTRY_DSN" in os.environ:
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=0.0,
+    )
+    logger.info("Sentry DSN reporting initialized")
 
 
 class DataException(Exception):
@@ -89,12 +96,15 @@ def execQuery(cluster, db, user, statement):
 
 def ensure_cluster_state(cluster):
     try:
-        instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)["Clusters"]
+        instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
+            "Clusters"
+        ]
     except botocore.exceptions.ClientError as err:
         if err.response["Error"]["Code"] == "ClusterNotFound":
             raise DataException(
                 f"Operation failed. Cluster '{cluster}' not found. Verify DB instance name."
-            )
+            ) from err
+        raise err
     instance = instances[0]
 
     logging.info("Cluster status is '%s'. ", instance["ClusterStatus"])
@@ -108,6 +118,7 @@ def ensure_cluster_state(cluster):
         )
     logging.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
 
+
 def ensure_valid_cluster(cluster):
     try:
         instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
@@ -117,7 +128,7 @@ def ensure_valid_cluster(cluster):
         if err.response["Error"]["Code"] == "ClusterNotFound":
             raise DataException(
                 f"Provisiong failed. Cluster '{cluster}' not found. Verify DB instance name."
-            )
+            ) from err
         raise err
     instance = instances[0]
     if not instance["PubliclyAccessible"]:
@@ -397,16 +408,7 @@ def handler(event, context):
             except DataException:
                 raise
             except Exception as e:
-                logger.error(e, exc_info=True)
-                return cfnresponse.send(
-                    event,
-                    context,
-                    cfnresponse.FAILED,
-                    {},
-                    reason="Execute query failed ({}). See the details in CloudWatch Log Stream: {}".format(
-                        str(e), context.log_stream_name
-                    ),
-                )
+                raise DataException(f"Execute query failed ({e})")
             return cfnresponse.send(
                 event,
                 context,
@@ -419,7 +421,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except DataException as e:
-        logging.error(e, exc_info=True)
+        logger.exception("Operation failed and custom error message reported")
         return cfnresponse.send(
             event,
             context,
@@ -430,7 +432,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
-        logging.error(e, exc_info=True)
+        logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
             context,
