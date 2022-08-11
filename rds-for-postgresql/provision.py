@@ -1,7 +1,7 @@
 import json
-import boto3
 import logging
 import time
+from typing import Sequence
 import cfnresponse
 import botocore
 import boto3
@@ -35,6 +35,8 @@ rds_client = boto3.client("rds")
 s3_client = boto3.client("s3")
 secret_client = boto3.client("secretsmanager")
 ec2_client = boto3.client("ec2")
+httpx_transport = httpx.HTTPTransport(retries=3)
+httpx_client = httpx.Client(transport=httpx_transport)
 
 
 class DataException(Exception):
@@ -272,7 +274,7 @@ def ensure_instance_restarted(server, configureLoggingRestart):
         waiter.wait(DBInstanceIdentifier=server)
         logging.info("Instance started after reboot.")
     else:
-        logging.warn(
+        logging.warning(
             "Pending modifications. They will probably be applied during the next maintenance window.",
         )
 
@@ -297,21 +299,17 @@ def execQuery(cur, text, noEcho=False, **parameters):
 SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
 
 
-@contextmanager
-def connect_instance(instance, user, dbname, password):
-    """
-    Create connection & cursor for AWS RDS for PostgreSQL
-
-    It also temporary open security group ingress to allow this connection
-    """
-    ip = httpx.get("https://httpbin.org/ip").json()["origin"]
-    securityGroupId = next(
-        x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]
+def create_ingress_rules(instance) -> tuple[str, Sequence[str]]:
+    ip = httpx_client.get("https://httpbin.org/ip").json()["origin"]
+    security_group_id = next(
+        (x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]), None
     )
+    if not security_group_id:
+        return None, []
     port = instance["Endpoint"]["Port"]
     try:
         security_groups_rules = ec2_client.authorize_security_group_ingress(
-            GroupId=securityGroupId,
+            GroupId=security_group_id,
             IpPermissions=[
                 {
                     "IpRanges": [
@@ -330,17 +328,38 @@ def connect_instance(instance, user, dbname, password):
         logging.info(
             "Added temporary ingress rule to enable access from '%s' to '%s' (port: %s): %s",
             ip,
-            securityGroupId,
+            security_group_id,
             port,
             rules_ids,
         )
+        return security_group_id, rules_ids
     except botocore.exceptions.ClientError as err:
         # no need to add a new rule, it is there
         if err.response["Error"]["Code"] == "InvalidPermission.Duplicate":
-            logging.warn("Temporary ingress rule to enable access exist. Skipping")
-            security_groups_rules = []
+            logging.warning("Temporary ingress rule to enable access exist. Skipping")
+            return security_group_id, []
         else:
             raise err
+
+
+def remove_ingress_rules(security_group_id, security_groups_rules):
+    if not security_groups_rules:
+        return
+    ec2_client.revoke_security_group_ingress(
+        GroupId=security_group_id,
+        SecurityGroupRuleIds=security_groups_rules,
+    )
+    logging.info("Removed temporary ingress rules: %s", security_groups_rules)
+
+
+@contextmanager
+def connect_instance(instance, user, dbname, password):
+    """
+    Create connection & cursor for AWS RDS for PostgreSQL
+
+    It also temporary open security group ingress to allow this connection
+    """
+    security_group_id, security_groups_rules = create_ingress_rules(instance)
     with psycopg2.connect(
         host=instance["Endpoint"]["Address"],
         port=instance["Endpoint"]["Port"],
@@ -350,12 +369,7 @@ def connect_instance(instance, user, dbname, password):
         connect_timeout=10,
     ) as conn, conn.cursor() as cur:
         yield cur
-        if security_groups_rules:
-            ec2_client.revoke_security_group_ingress(
-                GroupId=securityGroupId,
-                SecurityGroupRuleIds=rules_ids,
-            )
-            logging.warn("Removed temporary ingress rules: %s", rules_ids)
+        remove_ingress_rules(security_group_id, security_groups_rules)
 
 
 def ensure_user_created(server, schema, user, password, secretArn):
@@ -511,7 +525,7 @@ def ensure_user_removed(server, user, password, secretArn):
                 )
                 ensure_user_schema_revoked(cur, secret["username"])
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 "Failed to revoke permission in database '%s': %s",
                 dbname,
                 e,

@@ -1,6 +1,7 @@
 import copy_handler
 import provision
 import os
+
 CLUSTER = "postgres-test-data"
 
 
@@ -43,13 +44,15 @@ if __name__ == "__main__":
         "srcKey": "rds-for-postgresql/deployment-package.zip",
         "dstKey": "deployment-package.zip",
     }
-    provision.ensure_valid_cluster_engine(server)
-    provision.ensure_custom_parameter_group(server, configureLogging)
-    provision.ensure_parameter_set(server, configureLogging, "log_statement", "all")
-    provision.ensure_parameter_set(server, configureLogging, "log_min_duration_statement", "0")
-    provision.ensure_log_exporting_enabled(server, configureLogging)
-    provision.ensure_instance_restarted(server, configureLoggingRestart)
+    # provision.ensure_valid_cluster_engine(server)
+    # provision.ensure_custom_parameter_group(server, configureLogging)
+    # provision.ensure_parameter_set(server, configureLogging, "log_statement", "all")
+    # provision.ensure_parameter_set(
+    #     server, configureLogging, "log_min_duration_statement", "0"
+    # )
+    # provision.ensure_log_exporting_enabled(server, configureLogging)
+    # provision.ensure_instance_restarted(server, configureLoggingRestart)
     provision.handler(get_event("Create", {} | provision_resource), MockContext())
     provision.handler(get_event("Delete", {} | provision_resource), MockContext())
-    copy_handler.handler(get_event("Create", copy_resource), MockContext())
-    copy_handler.handler(get_event("Delete", copy_resource), MockContext())
+    # copy_handler.handler(get_event("Create", copy_resource), MockContext())
+    # copy_handler.handler(get_event("Delete", copy_resource), MockContext())
