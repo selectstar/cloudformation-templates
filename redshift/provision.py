@@ -43,6 +43,7 @@ if "SENTRY_DSN" in os.environ:
     )
     logger.info("Sentry DSN reporting initialized")
 
+
 class DataException(Exception):
     pass
 
@@ -95,7 +96,9 @@ def execQuery(cluster, db, user, statement):
 
 def ensure_cluster_state(cluster):
     try:
-        instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)["Clusters"]
+        instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
+            "Clusters"
+        ]
     except botocore.exceptions.ClientError as err:
         if err.response["Error"]["Code"] == "ClusterNotFound":
             raise DataException(
@@ -114,6 +117,7 @@ def ensure_cluster_state(cluster):
             f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Update the cluster configurations and try again."
         )
     logging.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
+
 
 def ensure_valid_cluster(cluster):
     try:
@@ -404,17 +408,7 @@ def handler(event, context):
             except DataException:
                 raise
             except Exception as e:
-                sentry_sdk.capture_exception(e)
-                logger.error(e, exc_info=True)
-                return cfnresponse.send(
-                    event,
-                    context,
-                    cfnresponse.FAILED,
-                    {},
-                    reason="Execute query failed ({}). See the details in CloudWatch Log Stream: {}".format(
-                        str(e), context.log_stream_name
-                    ),
-                )
+                raise DataException(f"Execute query failed ({e})")
             return cfnresponse.send(
                 event,
                 context,
@@ -427,8 +421,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except DataException as e:
-        sentry_sdk.capture_exception(e)
-        logging.error(e, exc_info=True)
+        logger.exception("Operation failed and custom error message reported")
         return cfnresponse.send(
             event,
             context,
@@ -439,8 +432,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logging.error(e, exc_info=True)
+        logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
             context,

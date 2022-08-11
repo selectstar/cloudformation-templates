@@ -597,8 +597,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except DataException as e:
-        sentry_sdk.capture_exception(e)
-        logger.error(e)
+        logger.exception("Operation failed and custom error message reported")
         return cfnresponse.send(
             event,
             context,
@@ -609,8 +608,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logging.error(e, exc_info=True)
+        logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
             context,

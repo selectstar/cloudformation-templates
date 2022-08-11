@@ -40,8 +40,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except Exception as e:
-        sentry_sdk.capture_exception(e)
-        logging.error(e)
+        logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
             context,
