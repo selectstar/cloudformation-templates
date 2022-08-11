@@ -1,18 +1,21 @@
 import json
-import boto3
 import logging
 import time
+from typing import Sequence
 import cfnresponse
 import botocore
 import boto3
 import psycopg2
 from itertools import groupby
 from psycopg2 import sql
+import httpx
 from collections import namedtuple
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
+import sentry_sdk
 import os
 import hashlib
+from contextlib import contextmanager
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
@@ -32,6 +35,16 @@ logger.setLevel(logging.INFO)
 rds_client = boto3.client("rds")
 s3_client = boto3.client("s3")
 secret_client = boto3.client("secretsmanager")
+ec2_client = boto3.client("ec2")
+httpx_transport = httpx.HTTPTransport(retries=3)
+httpx_client = httpx.Client(transport=httpx_transport)
+
+if "SENTRY_DSN" in os.environ:
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_DSN"],
+        traces_sample_rate=0.0,
+    )
+    logger.info("Sentry DSN reporting initialized")
 
 
 class DataException(Exception):
@@ -71,14 +84,14 @@ def fetch_instance(server):
         if err.response["Error"]["Code"] == "DBInstanceNotFound":
             raise DataException(
                 f"Provisiong failed. DB instannce '{server}' not found. Verify DB instance name."
-            )
+            ) from err
         raise err
 
+
 def determine_primary_server(server):
-    instance = fetch_instance(server) 
-    return instance.get(
-        "ReadReplicaSourceDBInstanceIdentifier", server
-    )
+    instance = fetch_instance(server)
+    return instance.get("ReadReplicaSourceDBInstanceIdentifier", server)
+
 
 def ensure_valid_cluster_engine(server):
     instance = fetch_instance(server)
@@ -132,7 +145,7 @@ def ensure_custom_parameter_group(server, configureLogging):
             None,
         )
         if not family:
-            raise Exception(
+            raise DataException(
                 "Configure logging failed."
                 "Unable to determine db parameter group family for cluster."
             )
@@ -269,7 +282,7 @@ def ensure_instance_restarted(server, configureLoggingRestart):
         waiter.wait(DBInstanceIdentifier=server)
         logging.info("Instance started after reboot.")
     else:
-        logging.warn(
+        logging.warning(
             "Pending modifications. They will probably be applied during the next maintenance window.",
         )
 
@@ -294,22 +307,93 @@ def execQuery(cur, text, noEcho=False, **parameters):
 SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
 
 
-def ensure_user_created(server, schema, user, password, secretArn):
+def create_ingress_rules(instance) -> tuple[str, Sequence[str]]:
+    ip = httpx_client.get("https://httpbin.org/ip").json()["origin"]
+    security_group_id = next(
+        (x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]), None
+    )
+    if not security_group_id:
+        return None, []
+    port = instance["Endpoint"]["Port"]
+    try:
+        security_groups_rules = ec2_client.authorize_security_group_ingress(
+            GroupId=security_group_id,
+            IpPermissions=[
+                {
+                    "IpRanges": [
+                        {
+                            "CidrIp": f"{ip}/32",
+                            "Description": "Temporary access to provision Select Star integration",
+                        },
+                    ],
+                    "IpProtocol": "tcp",
+                    "FromPort": port,
+                    "ToPort": port,
+                }
+            ],
+        )["SecurityGroupRules"]
+        rules_ids = [rule["SecurityGroupRuleId"] for rule in security_groups_rules]
+        logging.info(
+            "Added temporary ingress rule to enable access from '%s' to '%s' (port: %s): %s",
+            ip,
+            security_group_id,
+            port,
+            rules_ids,
+        )
+        return security_group_id, rules_ids
+    except botocore.exceptions.ClientError as err:
+        # no need to add a new rule, it is there
+        if err.response["Error"]["Code"] == "InvalidPermission.Duplicate":
+            logging.warning("Temporary ingress rule to enable access exist. Skipping")
+            return security_group_id, []
+        else:
+            raise err
 
+
+def remove_ingress_rules(security_group_id, security_groups_rules):
+    if not security_groups_rules:
+        return
+    ec2_client.revoke_security_group_ingress(
+        GroupId=security_group_id,
+        SecurityGroupRuleIds=security_groups_rules,
+    )
+    logging.info("Removed temporary ingress rules: %s", security_groups_rules)
+
+
+@contextmanager
+def connect_instance(instance, user, dbname, password):
+    """
+    Create connection & cursor for AWS RDS for PostgreSQL
+
+    It also temporarily opens security group ingress to allow this connection
+    """
+    security_group_id, security_groups_rules = create_ingress_rules(instance)
+    with psycopg2.connect(
+        host=instance["Endpoint"]["Address"],
+        port=instance["Endpoint"]["Port"],
+        user=user,
+        dbname=dbname,
+        password=password,
+        connect_timeout=10,
+    ) as conn, conn.cursor() as cur:
+        yield cur
+        remove_ingress_rules(security_group_id, security_groups_rules)
+
+
+def ensure_user_created(server, schema, user, password, secretArn):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
     secret_response = secret_client.get_secret_value(SecretId=secretArn)
     secret = json.loads(secret_response["SecretString"])
     logging.info("Successfully retrieved & decoded secret: %s", secretArn)
-    with psycopg2.connect(
-        host=instance["Endpoint"]["Address"],
-        port=instance["Endpoint"]["Port"],
+    with connect_instance(
+        instance=instance,
         user=user,
         # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
         dbname="postgres",
         password=password,
-    ) as conn, conn.cursor() as cur:
+    ) as cur:
         logger.info("Successfully connected to PostgreSQL")
         execQuery(
             cur,
@@ -319,7 +403,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
             password=sql.Literal(secret["password"]),
         )
         for x in schema:
-            if not x.db_name == "*":
+            if x.db_name != "*":
                 continue
             cur.execute(
                 sql.SQL(
@@ -332,13 +416,12 @@ def ensure_user_created(server, schema, user, password, secretArn):
     for db_name, db_schemas in groupby(schema, key=lambda x: x.db_name):
         if db_name == "*":
             continue
-        with psycopg2.connect(
-            host=instance["Endpoint"]["Address"],
-            port=instance["Endpoint"]["Port"],
+        with connect_instance(
+            instance=instance,
             user=user,
             dbname=db_name,
             password=password,
-        ) as conn, conn.cursor() as cur:
+        ) as cur:
             execQuery(
                 cur,
                 "GRANT CONNECT ON DATABASE {name} TO {user};",
@@ -422,14 +505,13 @@ def ensure_user_removed(server, user, password, secretArn):
     secret_response = secret_client.get_secret_value(SecretId=secretArn)
     secret = json.loads(secret_response["SecretString"])
     logging.info("Successfully retrieved & decoded secret: %s", secretArn)
-    with psycopg2.connect(
-        host=instance["Endpoint"]["Address"],
-        port=instance["Endpoint"]["Port"],
+    with connect_instance(
+        instance=instance,
         user=user,
         # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
         dbname="postgres",
         password=password,
-    ) as conn, conn.cursor() as cur:
+    ) as cur:
         logger.info("Successfully connected to PostgreSQL database '%s'", "postgres")
         cur.execute(
             sql.SQL(
@@ -440,32 +522,30 @@ def ensure_user_removed(server, user, password, secretArn):
         ensure_user_database_revoked(cur, secret["username"], dbs)
     for dbname in dbs:
         try:
-            with psycopg2.connect(
-                host=instance["Endpoint"]["Address"],
-                port=instance["Endpoint"]["Port"],
+            with connect_instance(
+                instance=instance,
                 user=user,
                 dbname=dbname,
                 password=password,
-            ) as conn, conn.cursor() as cur:
+            ) as cur:
                 logger.info(
                     "Successfully connected to PostgreSQL database '%s'", dbname
                 )
                 ensure_user_schema_revoked(cur, secret["username"])
         except Exception as e:
-            logging.warn(
+            logging.warning(
                 "Failed to revoke permission in database '%s': %s",
                 dbname,
                 e,
                 exc_info=True,
             )
-    with psycopg2.connect(
-        host=instance["Endpoint"]["Address"],
-        port=instance["Endpoint"]["Port"],
+    with connect_instance(
+        instance=instance,
         user=user,
         # 'postgres' is almost guaranteed that it will exist. Ref: https://stackoverflow.com/a/27731233
         dbname="postgres",
         password=password,
-    ) as conn, conn.cursor() as cur:
+    ) as cur:
         try:
             execQuery(
                 cur,
@@ -531,7 +611,7 @@ def handler(event, context):
                 reason="Create complete",
             )
     except DataException as e:
-        logger.error(e)
+        logger.exception("Operation failed and custom error message reported")
         return cfnresponse.send(
             event,
             context,
@@ -542,7 +622,7 @@ def handler(event, context):
             ),
         )
     except Exception as e:
-        logging.error(e, exc_info=True)
+        logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
             context,
