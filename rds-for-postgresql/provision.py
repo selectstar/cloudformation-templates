@@ -357,7 +357,7 @@ def connect_instance(instance, user, dbname, password):
     """
     Create connection & cursor for AWS RDS for PostgreSQL
 
-    It also temporary open security group ingress to allow this connection
+    It also temporarily opens security group ingress to allow this connection
     """
     security_group_id, security_groups_rules = create_ingress_rules(instance)
     with psycopg2.connect(
