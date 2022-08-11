@@ -302,7 +302,7 @@ def connect_instance(instance, user, dbname, password):
     """
     Create connection & cursor for AWS RDS for PostgreSQL
 
-    It also temporary open security group ingress to allow this connection
+    It also temporarily opens security group ingress to allow this connection
     """
     ip = httpx.get("https://httpbin.org/ip").json()["origin"]
     securityGroupId = next(
