@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Sequence
+from typing import Sequence, Tuple
 import cfnresponse
 import botocore
 import boto3
@@ -307,7 +307,7 @@ def execQuery(cur, text, noEcho=False, **parameters):
 SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
 
 
-def create_ingress_rules(instance) -> tuple[str, Sequence[str]]:
+def create_ingress_rules(instance) -> Tuple[str, Sequence[str]]:
     ip = httpx_client.get("https://httpbin.org/ip").json()["origin"]
     security_group_id = next(
         (x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]), None
@@ -367,6 +367,7 @@ def connect_instance(instance, user, dbname, password):
 
     It also temporarily opens security group ingress to allow this connection
     """
+    logging.info("Connecting to RDS instance: %s", instance['DBInstanceIdentifier'])
     security_group_id, security_groups_rules = create_ingress_rules(instance)
     with psycopg2.connect(
         host=instance["Endpoint"]["Address"],
@@ -376,6 +377,7 @@ def connect_instance(instance, user, dbname, password):
         password=password,
         connect_timeout=10,
     ) as conn, conn.cursor() as cur:
+        logger.info("Successfully connected to PostgreSQL database '%s'", dbname)
         yield cur
         remove_ingress_rules(security_group_id, security_groups_rules)
 
@@ -394,7 +396,6 @@ def ensure_user_created(server, schema, user, password, secretArn):
         dbname="postgres",
         password=password,
     ) as cur:
-        logger.info("Successfully connected to PostgreSQL")
         execQuery(
             cur,
             "CREATE USER {user} WITH encrypted password {password}",
@@ -512,7 +513,6 @@ def ensure_user_removed(server, user, password, secretArn):
         dbname="postgres",
         password=password,
     ) as cur:
-        logger.info("Successfully connected to PostgreSQL database '%s'", "postgres")
         cur.execute(
             sql.SQL(
                 "select datname from pg_catalog.pg_database where datallowconn = true and has_database_privilege({user}, datname, 'connect')"
@@ -528,9 +528,6 @@ def ensure_user_removed(server, user, password, secretArn):
                 dbname=dbname,
                 password=password,
             ) as cur:
-                logger.info(
-                    "Successfully connected to PostgreSQL database '%s'", dbname
-                )
                 ensure_user_schema_revoked(cur, secret["username"])
         except Exception as e:
             logging.warning(
