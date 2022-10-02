@@ -425,7 +425,10 @@
                                 },
                                 {
                                     "Effect": "Allow",
-                                    "Action": "redshift-data:DescribeStatement",
+                                    "Action": [
+                                        "redshift-data:DescribeStatement",
+                                        "redshift:DescribeClusterParameterGroups"
+                                    ],
                                     "Resource": "*"
                                 },
                                 {
@@ -469,6 +472,35 @@
                                         "s3:GetObject"
                                     ],
                                     "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "LoggingBucket"
+                                                    }
+                                                ]
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:s3:::",
+                                                    {
+                                                        "Ref": "LoggingBucket"
+                                                    },
+                                                    "/*"
+                                                ]
+                                            ]
+                                        }
+                                    ],
+                                    "Action": "*"
                                 }
                             ]
                         }
