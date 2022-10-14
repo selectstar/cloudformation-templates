@@ -1,5 +1,4 @@
 import provision
-import logging
 
 CLUSTER = "redshift-cluster-1"
 class MockContext(object):

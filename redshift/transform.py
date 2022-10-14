@@ -39,7 +39,7 @@ def handler(event, context):
                 {"result": [f"{prefix}{x}" for x in items]},
                 reason="Create complete",
             )
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,

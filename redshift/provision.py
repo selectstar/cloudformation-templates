@@ -1,5 +1,4 @@
 import json
-import boto3
 import logging
 import time
 import cfnresponse
@@ -347,7 +346,7 @@ def handler(event, context):
                             f"revoke all on {table} from selectstar;",
                         )
                 execQuery(cluster, db, dbUser, "drop user selectstar;")
-            except Exception as e:
+            except Exception:
                 logging.warn("User could not be removed")
 
             try:
@@ -357,7 +356,7 @@ def handler(event, context):
                 logging.info("Cluster IAM role removed: %s", role)
                 waiter = redshift_client.get_waiter("cluster_available")
                 waiter.wait(ClusterIdentifier=cluster)
-            except Exception as e:
+            except Exception:
                 logging.warn("Role could not be removed")
 
             cfnresponse.send(
@@ -431,7 +430,7 @@ def handler(event, context):
                 str(e), context.log_stream_name
             ),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
