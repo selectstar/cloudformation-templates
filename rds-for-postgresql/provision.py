@@ -367,7 +367,7 @@ def connect_instance(instance, user, dbname, password):
 
     It also temporarily opens security group ingress to allow this connection
     """
-    logging.info("Connecting to RDS instance: %s", instance['DBInstanceIdentifier'])
+    logging.info("Connecting to RDS instance: %s", instance["DBInstanceIdentifier"])
     security_group_id, security_groups_rules = create_ingress_rules(instance)
     with psycopg2.connect(
         host=instance["Endpoint"]["Address"],
