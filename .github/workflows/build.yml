@@ -26,7 +26,6 @@ jobs:
         run: ./.github/scripts/precommit-install.sh
       - name: Lint Python
         run: ./.github/scripts/precommit-lint.sh
-
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
