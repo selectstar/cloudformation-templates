@@ -1,4 +1,3 @@
-import copy_handler
 import provision
 import os
 

@@ -1,5 +1,4 @@
 import json
-import boto3
 import logging
 import time
 import cfnresponse
@@ -276,6 +275,7 @@ def ensure_user_activity_enabled(cluster, configureS3Logging):
             f"Setup logging to S3 must be accepted in CloudFormation or parameter '{USER_ACTIVITY}' enabled manually."
         )
 
+
 @retry_aws(codes=["InvalidClusterState"])
 def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
     cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
@@ -347,7 +347,7 @@ def handler(event, context):
                             f"revoke all on {table} from selectstar;",
                         )
                 execQuery(cluster, db, dbUser, "drop user selectstar;")
-            except Exception as e:
+            except Exception:
                 logging.warn("User could not be removed")
 
             try:
@@ -357,7 +357,7 @@ def handler(event, context):
                 logging.info("Cluster IAM role removed: %s", role)
                 waiter = redshift_client.get_waiter("cluster_available")
                 waiter.wait(ClusterIdentifier=cluster)
-            except Exception as e:
+            except Exception:
                 logging.warn("Role could not be removed")
 
             cfnresponse.send(
@@ -391,7 +391,7 @@ def handler(event, context):
                         dbUser,
                         user_stmt,
                     )
-                except Exception as e:
+                except Exception:
                     logger.warn(
                         f"Ignore failure on user creation. Most likely user already exist"
                     )
@@ -431,7 +431,7 @@ def handler(event, context):
                 str(e), context.log_stream_name
             ),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
