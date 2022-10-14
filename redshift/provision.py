@@ -390,7 +390,7 @@ def handler(event, context):
                         dbUser,
                         user_stmt,
                     )
-                except Exception as e:
+                except Exception:
                     logger.warn(
                         f"Ignore failure on user creation. Most likely user already exist"
                     )

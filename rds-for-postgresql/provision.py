@@ -618,7 +618,7 @@ def handler(event, context):
                 str(e), context.log_stream_name
             ),
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected failure")
         return cfnresponse.send(
             event,
