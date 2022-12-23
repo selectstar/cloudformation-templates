@@ -19,6 +19,10 @@ on:
         required: false
         type: string
         description: Job name for notification
+      slack-notify-success:
+        required: false
+        type: boolean
+        default: false
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -50,9 +54,9 @@ jobs:
           job_name: "${{ inputs.slack-job-name }}"
           status: ${{ job.status }}
           fields: ref,message,workflow,job,took,author
-          mention: S03KPC0D63V # @devops
+          mention: subteam^S03KPC0D63V # @devops
           if_mention: failure,cancelled
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           MATRIX_CONTEXT: ${{ toJson(matrix) }}
-        if: always() && inputs.slack-job-name != ''
+        if: inputs.slack-job-name != '' && (failure() || (success() && inputs.slack-notify-success == true))
