@@ -84,12 +84,12 @@ def execQuery(cluster, db, user, statement):
             response["Records"] = redshiftdata_client.get_statement_result(
                 Id=response["Id"]
             )["Records"]
-        logging.info("Finished: %s", statement)
+        logger.info("Finished: %s", statement)
         if response["Status"] != "FINISHED":
             raise DataException("Failed SQL: " + str(response["Error"]))
         return response
     except Exception as e:
-        logging.info("Failed Exec Query: %s", e)
+        logger.info("Failed Exec Query: %s", e)
         raise e
 
 
@@ -106,7 +106,7 @@ def ensure_cluster_state(cluster):
         raise err
     instance = instances[0]
 
-    logging.info("Cluster status is '%s'. ", instance["ClusterStatus"])
+    logger.info("Cluster status is '%s'. ", instance["ClusterStatus"])
     if instance["ClusterStatus"] == "paused":
         raise DataException(
             f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Resume the cluster and try again."
@@ -115,7 +115,7 @@ def ensure_cluster_state(cluster):
         raise DataException(
             f"Cluster status must be 'available'. Status is '{instance['ClusterStatus']}'. Update the cluster configurations and try again."
         )
-    logging.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
+    logger.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
 
 
 def ensure_valid_cluster(cluster):
@@ -139,9 +139,9 @@ def ensure_valid_cluster(cluster):
         for x in instance["VpcSecurityGroups"]
         if x["Status"] == "active"
     ][0]
-    logging.info("Determined security group ID: %s", security_group_id)
+    logger.info("Determined security group ID: %s", security_group_id)
     endpoint_port = instance["Endpoint"]["Port"]
-    logging.info("Determined endpoint port: %s", endpoint_port)
+    logger.info("Determined endpoint port: %s", endpoint_port)
     return security_group_id, endpoint_port
 
 
@@ -154,11 +154,11 @@ def ensure_iam_role(cluster, role):
         iam_role["IamRoleArn"] == role for iam_role in cluster_description["IamRoles"]
     )
     if enabled:
-        logging.info(
+        logger.info(
             "IAM role added to cluster. Nothing to do.",
         )
     else:
-        logging.info("Add IAM role to cluster required.")
+        logger.info("Add IAM role to cluster required.")
         redshift_client.modify_cluster_iam_roles(
             ClusterIdentifier=cluster, AddIamRoles=[role]
         )
@@ -171,7 +171,7 @@ def ensure_logging_enabled(cluster, configureS3Logging, bucket):
     logging_status = redshift_client.describe_logging_status(
         ClusterIdentifier=cluster,
     )
-    logging.info("Logging status: %s", logging_status)
+    logger.info("Logging status: %s", logging_status)
     if logging_status["LoggingEnabled"]:  # eg. user already configured s3 logging
         if "BucketName" in logging_status:  # eg. use custom s3 bucket active
             logging_bucket = logging_status["BucketName"]
@@ -180,7 +180,7 @@ def ensure_logging_enabled(cluster, configureS3Logging, bucket):
                 "Configure S3 logging failed. Another destination of logging active."
             )
     elif configureS3Logging:
-        logging.info("Enable logging required.")
+        logger.info("Enable logging required.")
         redshift_client.enable_logging(
             ClusterIdentifier=cluster,
             BucketName=bucket,
@@ -205,13 +205,13 @@ def ensure_custom_parameter_group(cluster, configureS3Logging):
     parameter_group_name = cluster_description["ClusterParameterGroups"][0][
         "ParameterGroupName"
     ]
-    logging.info("Current parameter group name: %s", parameter_group_name)
+    logger.info("Current parameter group name: %s", parameter_group_name)
     if not parameter_group_name.startswith("default."):
-        logging.info(
+        logger.info(
             "Custom parameter group used. Nothing to do.",
         )
     elif configureS3Logging:
-        logging.info("Create a new parameter group required.")
+        logger.info("Create a new parameter group required.")
         parameter_group = redshift_client.describe_cluster_parameter_groups(
             ParameterGroupName=parameter_group_name
         )["ParameterGroups"][0]
@@ -221,12 +221,12 @@ def ensure_custom_parameter_group(cluster, configureS3Logging):
             ParameterGroupFamily=parameter_group["ParameterGroupFamily"],
             Description="Created by CloudFormation on provisioning Select Star",
         )
-        logging.info("Custom parameter group created: %s", custom_parameter_group)
+        logger.info("Custom parameter group created: %s", custom_parameter_group)
         redshift_client.modify_cluster(
             ClusterIdentifier=cluster,
             ClusterParameterGroupName=custom_parameter_group,
         )
-        logging.info("Custom parameter set for cluster: %s", custom_parameter_group)
+        logger.info("Custom parameter set for cluster: %s", custom_parameter_group)
         waiter = redshift_client.get_waiter("cluster_available")
         waiter.wait(ClusterIdentifier=cluster)
     else:
@@ -244,7 +244,7 @@ def ensure_user_activity_enabled(cluster, configureS3Logging):
     parameter_group = cluster_description["ClusterParameterGroups"][0][
         "ParameterGroupName"
     ]
-    logging.info("Parameter group: %s", parameter_group)
+    logger.info("Parameter group: %s", parameter_group)
     paginator = redshift_client.get_paginator("describe_cluster_parameters")
     enabled = any(
         parameter["ParameterName"] == USER_ACTIVITY
@@ -253,7 +253,7 @@ def ensure_user_activity_enabled(cluster, configureS3Logging):
         for parameter in resp["Parameters"]
     )
     if enabled:
-        logging.info(
+        logger.info(
             "User activity enabled. Nothing to do.",
         )
     elif configureS3Logging:
@@ -266,7 +266,7 @@ def ensure_user_activity_enabled(cluster, configureS3Logging):
                 }
             ],
         )
-        logging.info("Parameter group updated to set parameter: %s", USER_ACTIVITY)
+        logger.info("Parameter group updated to set parameter: %s", USER_ACTIVITY)
         waiter = redshift_client.get_waiter("cluster_available")
         waiter.wait(ClusterIdentifier=cluster)
     else:
@@ -282,28 +282,26 @@ def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
         "Clusters"
     ][0]
     pending_reboot = any(
-        param["ParameterName"] == USER_ACTIVITY
-        and param["ParameterApplyStatus"] == "pending-reboot"
+        group["ParameterApplyStatus"] != "in-sync"
         for group in cluster_description["ClusterParameterGroups"]
-        for param in group["ClusterParameterStatusList"]
     )
     if not pending_reboot:
-        logging.info(
+        logger.info(
             "No pending modifications. Nothing to do.",
         )
     elif configureS3LoggingRestart:
-        logging.info(
+        logger.info(
             "Cluster requires reboot.",
         )
         redshift_client.reboot_cluster(ClusterIdentifier=cluster)
-        logging.info(
+        logger.info(
             "Cluster rebooted. Waiting to start.",
         )
         waiter = redshift_client.get_waiter("cluster_available")
         waiter.wait(ClusterIdentifier=cluster)
-        logging.info("Cluster started after reboot.")
+        logger.info("Cluster started after reboot.")
     else:
-        logging.warn(
+        logger.warn(
             "Pending modifications. They will probably be applied during the next maintenance window.",
         )
 
@@ -348,39 +346,39 @@ def handler(event, context):
                         )
                 execQuery(cluster, db, dbUser, "drop user selectstar;")
             except Exception:
-                logging.warn("User could not be removed")
+                logger.warn("User could not be removed")
 
             try:
                 redshift_client.modify_cluster_iam_roles(
                     ClusterIdentifier=cluster, RemoveIamRoles=[role]
                 )
-                logging.info("Cluster IAM role removed: %s", role)
+                logger.info("Cluster IAM role removed: %s", role)
                 waiter = redshift_client.get_waiter("cluster_available")
                 waiter.wait(ClusterIdentifier=cluster)
             except Exception:
-                logging.warn("Role could not be removed")
+                logger.warn("Role could not be removed")
 
             cfnresponse.send(
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
             security_group_id, endpoint_port = ensure_valid_cluster(cluster)
-            logging.info("Ćluster validated successfully")
+            logger.info("Ćluster validated successfully")
 
             ensure_iam_role(cluster, role)
-            logging.info("IAM role configured successfully")
+            logger.info("IAM role configured successfully")
 
             logging_bucket = ensure_logging_enabled(cluster, configureS3Logging, bucket)
-            logging.info("S3 logging configured successfully")
+            logger.info("S3 logging configured successfully")
 
             ensure_custom_parameter_group(cluster, configureS3Logging)
-            logging.info("Ensured a custom parameter group")
+            logger.info("Ensured a custom parameter group")
 
             ensure_user_activity_enabled(cluster, configureS3Logging)
-            logging.info("Ensured a user activity enabled")
+            logger.info("Ensured a user activity enabled")
 
             ensure_cluster_restarted(cluster, configureS3LoggingRestart)
-            logging.info("User audit logging configured successfully")
+            logger.info("User audit logging configured successfully")
 
             try:
                 try:
