@@ -197,6 +197,28 @@ def ensure_logging_enabled(cluster, configureS3Logging, bucket):
     return logging_bucket
 
 
+def create_cluster_parameter_group(parameter_group, prefix):
+    suffix = ""
+    for i in range(10):
+        try:
+            name = f"{prefix}{suffix}"
+            suffix = f"-{i}"
+            logger.info("Creating new parameter group with name: %s", name)
+            redshift_client.create_cluster_parameter_group(
+                ParameterGroupName=name,
+                ParameterGroupFamily=parameter_group["ParameterGroupFamily"],
+                Description="Created by CloudFormation on provisioning Select Star",
+            )
+            return name
+        except redshift_client.exceptions.ClusterParameterGroupAlreadyExistsFault as err:
+            logger.warn(f"API call failed ({err}); continue with new suffix...")
+            continue
+    raise DataException(
+        "Unable to create new cluster paramter group. Failed to find a new unique name. "
+        + "Create and add custom parameter group to the Redshift cluster manually and try again."
+    )
+
+
 @retry_aws(codes=["InvalidClusterParameterGroupState"])
 def ensure_custom_parameter_group(cluster, configureS3Logging):
     cluster_description = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
@@ -215,11 +237,8 @@ def ensure_custom_parameter_group(cluster, configureS3Logging):
         parameter_group = redshift_client.describe_cluster_parameter_groups(
             ParameterGroupName=parameter_group_name
         )["ParameterGroups"][0]
-        custom_parameter_group = f"redshift-custom-{cluster}"
-        redshift_client.create_cluster_parameter_group(
-            ParameterGroupName=custom_parameter_group,
-            ParameterGroupFamily=parameter_group["ParameterGroupFamily"],
-            Description="Created by CloudFormation on provisioning Select Star",
+        custom_parameter_group = create_cluster_parameter_group(
+            parameter_group=parameter_group, prefix=f"redshift-custom-{cluster}"
         )
         logger.info("Custom parameter group created: %s", custom_parameter_group)
         redshift_client.modify_cluster(
