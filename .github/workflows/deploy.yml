@@ -48,6 +48,11 @@ jobs:
         run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
+      - name: Deploy Glue
+        working-directory: './glue'
+        run: ./deploy.sh "$BUCKET_NAME"
+        env:
+          BUCKET_NAME: ${{ inputs.aws-bucket-name }}
       - uses: 8398a7/action-slack@v3
         with:
           author_name: ${{ github.repository_owner }}/${{ github.event.repository.name }}
