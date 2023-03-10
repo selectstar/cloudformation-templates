@@ -98,26 +98,21 @@ resource "random_id" "master-identifier" {
   byte_length = 8
 }
 
-resource "aws_cloudformation_stack" "stack-master" {
-  name = "stack-${random_id.master-identifier.hex}-${aws_redshift_cluster.e2e.cluster_identifier}"
+module "stack-master" {
+  source = "../terraform"
 
-  disable_rollback = true
+  # make sure it matches example in /redshift/terraform/README.md
+  cluster_identifier    = aws_redshift_cluster.e2e.cluster_identifier
+  provisioning_user     = aws_redshift_cluster.e2e.master_username
+  provisioning_database = aws_redshift_cluster.e2e.database_name
+  external_id           = "X"
+  iam_principal         = data.aws_caller_identity.current.account_id
 
-  parameters = {
-    Cluster                   = aws_redshift_cluster.e2e.cluster_identifier
-    Grant                     = "*"
-    Db                        = aws_redshift_cluster.e2e.database_name
-    ExternalId                = "X"
-    DbUser                    = aws_redshift_cluster.e2e.master_username
-    IamPrincipal              = data.aws_caller_identity.current.account_id
-    CidrIpPrimary             = "3.23.108.85/32"
-    CidrIpSecondary           = "3.20.56.105/32"
-    ConfigureS3Logging        = true
-    ConfigureS3LoggingRestart = true
-  }
-
-  capabilities = ["CAPABILITY_IAM"]
   template_url = local.template_url
+
+  depends_on = [
+    aws_redshift_cluster.e2e
+  ]
 }
 
 
@@ -133,6 +128,10 @@ resource "aws_redshiftdata_statement" "example" {
   sql                = "SELECT 1"
 
   depends_on = [
-    aws_cloudformation_stack.stack-master
+    module.stack-master
   ]
+}
+
+output "role_arn" {
+  value = module.stack-master.role_arn
 }
