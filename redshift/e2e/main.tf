@@ -106,7 +106,7 @@ module "stack-master" {
   provisioning_user     = aws_redshift_cluster.e2e.master_username
   provisioning_database = aws_redshift_cluster.e2e.database_name
   external_id           = "X"
-  iam_principal         = data.aws_caller_identity.current.account_id
+  iam_principal         = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
 
   template_url = local.template_url
 
