@@ -344,7 +344,7 @@
                         }
                     ]
                 },
-                "PolicyName": "EnableSelectStar",
+                "PolicyName": "EnableSelectStarAccess",
                 "Roles": [
                     {
                         "Ref": "CrossAccountRole"
@@ -396,124 +396,138 @@
                         }
                     ]
                 },
-                "Policies": [
-                    {
-                        "PolicyName": "RedshiftAccess",
-                        "PolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "redshift:*",
-                                        "redshift-data:*"
-                                    ],
-                                    "Resource": [
-                                        {
-                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${Cluster}/${DbUser}"
-                                        },
-                                        {
-                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${Cluster}/*"
-                                        },
-                                        {
-                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}"
-                                        },
-                                        {
-                                            "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:parametergroup:*"
-                                        }
-                                    ]
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "redshift-data:DescribeStatement",
-                                        "redshift:DescribeClusterParameterGroups"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "iam:PassRole"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:*"
-                                    ],
-                                    "Resource": [
-                                        {
-                                            "Fn::Sub": [
-                                                "arn:aws:s3:::${BucketName}",
-                                                {
-                                                    "BucketName": {
-                                                        "Ref": "LambdaBucket"
-                                                    }
-                                                }
-                                            ]
-                                        },
-                                        {
-                                            "Fn::Sub": [
-                                                "arn:aws:s3:::${BucketName}/*",
-                                                {
-                                                    "BucketName": {
-                                                        "Ref": "LambdaBucket"
-                                                    }
-                                                }
-                                            ]
-                                        }
-                                    ]
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Resource": [
-                                        {
-                                            "Fn::Join": [
-                                                "",
-                                                [
-                                                    "arn:aws:s3:::",
-                                                    {
-                                                        "Ref": "LoggingBucket"
-                                                    }
-                                                ]
-                                            ]
-                                        },
-                                        {
-                                            "Fn::Join": [
-                                                "",
-                                                [
-                                                    "arn:aws:s3:::",
-                                                    {
-                                                        "Ref": "LoggingBucket"
-                                                    },
-                                                    "/*"
-                                                ]
-                                            ]
-                                        }
-                                    ],
-                                    "Action": "*"
-                                }
-                            ]
-                        }
-                    }
-                ],
                 "ManagedPolicyArns": [
                     "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
                     "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
                 ]
             }
         },
+        "LambdaRolePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "redshift:*",
+                                "redshift-data:*"
+                            ],
+                            "Resource": [
+                                {
+                                    "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbuser:${Cluster}/${DbUser}"
+                                },
+                                {
+                                    "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:dbname:${Cluster}/*"
+                                },
+                                {
+                                    "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:cluster:${Cluster}"
+                                },
+                                {
+                                    "Fn::Sub": "arn:aws:redshift:${AWS::Region}:${AWS::AccountId}:parametergroup:*"
+                                }
+                            ]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "redshift-data:DescribeStatement",
+                                "redshift:DescribeClusterParameterGroups"
+                            ],
+                            "Resource": "*"
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "iam:PassRole"
+                            ],
+                            "Resource": {
+                                "Fn::GetAtt": [
+                                    "CrossAccountRole",
+                                    "Arn"
+                                ]
+                            }
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:*"
+                            ],
+                            "Resource": [
+                                {
+                                    "Fn::Sub": [
+                                        "arn:aws:s3:::${BucketName}",
+                                        {
+                                            "BucketName": {
+                                                "Ref": "LambdaBucket"
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "Fn::Sub": [
+                                        "arn:aws:s3:::${BucketName}/*",
+                                        {
+                                            "BucketName": {
+                                                "Ref": "LambdaBucket"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:GetObject"
+                            ],
+                            "Resource": "*"
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "LoggingBucket"
+                                            }
+                                        ]
+                                    ]
+                                },
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "LoggingBucket"
+                                            },
+                                            "/*"
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Action": "*"
+                        }
+                    ]
+                },
+                "PolicyName": "EnableSelectStarProvisioning",
+                "Roles": [
+                    {
+                        "Ref": "LambdaRole"
+                    }
+                ]
+            }
+        },
         "LambdaProvisionFunction": {
             "Type": "AWS::Lambda::Function",
+            "DependsOn": [
+                "LambdaRolePolicy"
+            ],
             "Properties": {
                 "Timeout": 300,
                 "Code": {

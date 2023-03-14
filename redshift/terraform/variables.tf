@@ -40,7 +40,7 @@ variable "iam_principal" {
 
   validation {
     condition     = can(regex("^arn:aws:iam::", var.iam_principal))
-    error_message = "Invalid IAM principal ARN."
+    error_message = "Invalid IAM principal. You must enter a valid ARN."
   }
 }
 
