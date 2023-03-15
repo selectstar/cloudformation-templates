@@ -410,6 +410,11 @@
                     "Statement": [
                         {
                             "Effect": "Allow",
+                            "Action": "s3:GetObject",
+                            "Resource": "arn:aws:s3:::cf-templates-pp3cips1o7jf-us-east-2/redshift/deployment-package.zip"
+                        },
+                        {
+                            "Effect": "Allow",
                             "Action": [
                                 "redshift:*",
                                 "redshift-data:*"
@@ -439,9 +444,7 @@
                         },
                         {
                             "Effect": "Allow",
-                            "Action": [
-                                "iam:PassRole"
-                            ],
+                            "Action": "iam:PassRole",
                             "Resource": {
                                 "Fn::GetAtt": [
                                     "CrossAccountRole",
@@ -451,9 +454,7 @@
                         },
                         {
                             "Effect": "Allow",
-                            "Action": [
-                                "s3:*"
-                            ],
+                            "Action": "s3:*",
                             "Resource": [
                                 {
                                     "Fn::Sub": [
@@ -479,13 +480,7 @@
                         },
                         {
                             "Effect": "Allow",
-                            "Action": [
-                                "s3:GetObject"
-                            ],
-                            "Resource": "*"
-                        },
-                        {
-                            "Effect": "Allow",
+                            "Action": "*",
                             "Resource": [
                                 {
                                     "Fn::Join": [
@@ -510,8 +505,7 @@
                                         ]
                                     ]
                                 }
-                            ],
-                            "Action": "*"
+                            ]
                         }
                     ]
                 },
