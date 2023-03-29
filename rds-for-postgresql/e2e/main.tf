@@ -112,27 +112,21 @@ resource "random_id" "master-identifier" {
   byte_length = 8
 }
 
-resource "aws_cloudformation_stack" "stack-master" {
-  name = "stack-${random_id.master-identifier.hex}-${aws_db_instance.db-master.identifier}"
+module "stack-master" {
+  source = "../terraform"
 
-  disable_rollback = true
+  # make sure it matches the example in /rds-for-postgresql/terraform/README.md
+  db_identifier               = aws_db_instance.db-master.identifier
+  provisioning_user           = aws_db_instance.db-master.username
+  provisioning_user_password  = random_string.random.result
+  external_id                 = "X"
+  iam_principal               = "arn:awn:iam::${data.aws_caller_identity.current.account_id}:root"
 
-  parameters = {
-    ServerName              = aws_db_instance.db-master.identifier
-    Schema                  = "*.*"
-    DbUser                  = aws_db_instance.db-master.username
-    DbPassword              = random_string.random.result
-    ProvisionAccessUserName = "selectstar-${random_id.master-identifier.hex}"
-    ExternalId              = "X"
-    IamPrincipal            = data.aws_caller_identity.current.account_id
-    ConfigureLogging        = "true"
-    ConfigureLoggingRestart = "true"
-    CidrIpPrimary           = "3.23.108.85/32"
-    CidrIpSecondary         = "3.20.56.105/32"
-  }
+  template_url                = local.template_url
 
-  capabilities = ["CAPABILITY_IAM"]
-  template_url = local.template_url
+  depends_on = [
+    aws_db_instance.db-master
+  ]
 }
 
 
@@ -168,27 +162,22 @@ resource "random_id" "replica-identifier" {
   byte_length = 8
 }
 
-resource "aws_cloudformation_stack" "stack-replica" {
-  name = "stack-${random_id.replica-identifier.hex}-${aws_db_instance.db-replica.identifier}"
+module "stack-replica" {
+  source = "../terraform"
 
-  disable_rollback = true
+  # make sure it matches the example in /rds-for-postgresql/terraform/README.md
+  db_identifier               = aws_db_instance.db-replica.identifier
+  provisioning_user           = aws_db_instance.db-replica.username
+  provisioning_user_password  = random_string.random.result
+  access_user                 = "selectstar-replica-${random_id.replica-identifier.hex}"
+  external_id                 = "X"
+  iam_principal               = "arn:awn:iam::${data.aws_caller_identity.current.account_id}:root"
 
-  parameters = {
-    ServerName              = aws_db_instance.db-replica.identifier
-    Schema                  = "*.*"
-    DbUser                  = aws_db_instance.db-replica.username
-    DbPassword              = random_string.random.result
-    ProvisionAccessUserName = "selectstar-replica-${random_id.replica-identifier.hex}"
-    ExternalId              = "X"
-    IamPrincipal            = data.aws_caller_identity.current.account_id
-    ConfigureLogging        = "true"
-    ConfigureLoggingRestart = "true"
-    CidrIpPrimary           = "3.23.108.85/32"
-    CidrIpSecondary         = "3.20.56.105/32"
-  }
+  template_url                = local.template_url
 
-  capabilities = ["CAPABILITY_IAM"]
-  template_url = local.template_url
+  depends_on = [
+    aws_db_instance.db-replica
+  ]
 }
 
 data "http" "myip" {
