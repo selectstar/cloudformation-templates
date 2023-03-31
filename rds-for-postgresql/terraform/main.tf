@@ -7,7 +7,7 @@ resource "random_id" "db-identifier" {
 }
 
 data "aws_db_instance" "rds" {
-  identifier = var.db_identifier
+  db_instance_identifier = var.db_identifier
 }
 
 resource "aws_cloudformation_stack" "rds-stack" {
@@ -16,7 +16,7 @@ resource "aws_cloudformation_stack" "rds-stack" {
   disable_rollback = true
 
   parameters = {
-    ServerName                = data.aws_db_instance.rds.identifier
+    ServerName                = data.aws_db_instance.rds.db_instance_identifier
     Schema                    = var.database_grant
     DbUser                    = var.provisioning_user
     DbPassword                = var.provisioning_user_password

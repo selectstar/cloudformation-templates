@@ -74,5 +74,6 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | Identifier of AWS IAM Role intended for use by Select Star to access the RDS instance and logs. Needs to be shared with Select Star in adding new data source form. |
+| <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | Identifier of AWS IAM Role intended for use by Select Star to access the RDS instance and logs. Needs to be shared with Select Star in the new data source form. |
+| <a name="output_secret_arn"></a> [secret\_arn](#output\_secret\_arn) | Identifier of the Secret in the AWS Secret Manager which stores the credentials for the created Select Star account in Postgresql. Needs to be shared with Select Star in the new data source form. |
 <!-- END_TF_DOCS -->

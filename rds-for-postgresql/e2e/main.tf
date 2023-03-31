@@ -120,7 +120,7 @@ module "stack-master" {
   provisioning_user           = aws_db_instance.db-master.username
   provisioning_user_password  = random_string.random.result
   external_id                 = "X"
-  iam_principal               = "arn:awn:iam::${data.aws_caller_identity.current.account_id}:root"
+  iam_principal               = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
 
   template_url                = local.template_url
 
@@ -171,7 +171,7 @@ module "stack-replica" {
   provisioning_user_password  = random_string.random.result
   access_user                 = "selectstar-replica-${random_id.replica-identifier.hex}"
   external_id                 = "X"
-  iam_principal               = "arn:awn:iam::${data.aws_caller_identity.current.account_id}:root"
+  iam_principal               = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
 
   template_url                = local.template_url
 
@@ -189,20 +189,20 @@ resource "aws_security_group_rule" "example" {
   from_port         = aws_db_instance.db-master.port
   to_port           = aws_db_instance.db-master.port
   protocol          = "tcp"
-  cidr_blocks       = ["${chomp(data.http.myip.body)}/32"]
+  cidr_blocks       = ["${chomp(data.http.myip.response_body)}/32"]
   security_group_id = aws_security_group.security-group.id
   depends_on = [
-    aws_cloudformation_stack.stack-master,
-    aws_cloudformation_stack.stack-replica
+    module.stack-master,
+    module.stack-replica
   ]
 }
 
 ## Validation
 data "aws_secretsmanager_secret_version" "master" {
-  secret_id = aws_cloudformation_stack.stack-master.outputs.SecretArn
+  secret_id = module.stack-master.secret_arn
 }
 data "aws_secretsmanager_secret_version" "replica" {
-  secret_id = aws_cloudformation_stack.stack-replica.outputs.SecretArn
+  secret_id = module.stack-replica.secret_arn
 }
 locals {
   master_username  = jsondecode(data.aws_secretsmanager_secret_version.master.secret_string)["username"]
