@@ -14,9 +14,14 @@ module "stack" {
 
   db_identifier               = "X"       # set to your RDS DB identifier, eg. aws_db_instance.db-master.identifier
   provisioning_user           = "awsuser" # set to provisioning user, master user preferred, eg. aws_db_instance.db-master.username
-  provisioning_user_password  = "X"       # set to the password for the `provisioning_user`
+  provisioning_user_password  = var.provisioning_user_password  # set to the password for the `provisioning_user`
   external_id                 = "X"       # available in add new data source form
   iam_principal               = "X"       # available in add new data source form
+}
+
+variable "provisioning_user_password" {
+  type          = string
+  sensitive     = true
 }
 ```
 

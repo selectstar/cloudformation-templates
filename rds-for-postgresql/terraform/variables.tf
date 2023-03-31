@@ -23,6 +23,7 @@ variable "provisioning_user" {
 
 variable "provisioning_user_password" {
   type        = string
+  sensitive   = true
   nullable    = false
   description = "The password for the provisioning_user. This is only used for provisioning a new user during initial setup."
 }
