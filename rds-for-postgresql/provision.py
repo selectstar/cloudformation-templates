@@ -185,7 +185,11 @@ def ensure_parameter_set(server, configureLogging, name, value):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
-    parameter_groups = (group["DBParameterGroupName"] for group in instance["DBParameterGroups"] if not group["DBParameterGroupName"].startswith("default."))
+    parameter_groups = (
+        group["DBParameterGroupName"]
+        for group in instance["DBParameterGroups"]
+        if not group["DBParameterGroupName"].startswith("default.")
+    )
 
     paginator = rds_client.get_paginator("describe_db_parameters")
     found_parameter = None
