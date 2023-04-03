@@ -175,49 +175,67 @@ def ensure_custom_parameter_group(server, configureLogging):
         )
 
 
+def find_parameter(name, parameters):
+    for param in parameters:
+        if param["ParameterName"] == name:
+            return param
+
+
 def ensure_parameter_set(server, configureLogging, name, value):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
-    parameter_group = next(
+    parameter_groups = (
         group["DBParameterGroupName"]
         for group in instance["DBParameterGroups"]
         if not group["DBParameterGroupName"].startswith("default.")
     )
+
     paginator = rds_client.get_paginator("describe_db_parameters")
-    enabled_parameter = any(
-        paginator.paginate(
-            DBParameterGroupName=parameter_group,
-            Filters=[{"Name": name, "Values": [value]}],
-        )
-    )
-    if enabled_parameter:
+    found_parameter = None
+    target_parameter_group = None
+
+    for parameter_group in parameter_groups:
+        if target_parameter_group is None:
+            # use the first parameter group as the target to set the parameter in, in case it's not found.
+            target_parameter_group = parameter_group
+
+        for page in paginator.paginate(DBParameterGroupName=parameter_group):
+            found_parameter = find_parameter(name, page["Parameters"])
+            if found_parameter is not None:
+                target_parameter_group = parameter_group
+                break
+        if found_parameter is not None:
+            break
+
+    if found_parameter is not None and found_parameter.get("ParameterValue") == value:
         logging.info(
             "Parameter '%s' of parameter group '%s' already set to '%s'. Nothing to do.",
             name,
-            parameter_group,
+            target_parameter_group,
             value,
         )
     elif configureLogging:
         rds_client.modify_db_parameter_group(
-            DBParameterGroupName=parameter_group,
+            DBParameterGroupName=target_parameter_group,
             Parameters=[
                 {
                     "ParameterName": name,
                     "ParameterValue": value,
+                    "ApplyMethod": "pending-reboot",
                 },
             ],
         )
         logging.info(
             "Parameter '%s' of parameter group '%s' update to '%s'. ",
             name,
-            parameter_group,
+            target_parameter_group,
             value,
         )
     else:
         raise DataException(
             "Configure logging failed."
-            f"Setup logging must be accepted in CloudFormation or manually update parameter '{name}' of parameter group '{parameter_group}' to '{value}'."
+            f"Setup logging must be accepted in CloudFormation or manually update parameter '{name}' of parameter group '{target_parameter_group}' to '{value}'."
         )
 
 
