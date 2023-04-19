@@ -11,7 +11,7 @@
             "Description": "The Select Star IAM principal which has permission to your AWS account. Do not change this.",
             "MinLength": "1",
             "Type": "String"
-        },
+        }
     },
     "Metadata": {
         "AWS::CloudFormation::Interface": {
