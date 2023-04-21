@@ -4,7 +4,7 @@ variable "region" {
 }
 
 variable "name" {
-  default = "test-redshift"
+  default = "test-e2e-redshift"
   type    = string
 }
 
