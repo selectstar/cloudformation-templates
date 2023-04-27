@@ -374,6 +374,9 @@
         },
         "LambdaCopy": {
             "Type": "Custom::LambdaCopy",
+            "DependsOn": [
+                "LambdaRolePolicy"
+            ],
             "Version": "1.0",
             "Properties": {
                 "ServiceToken": {
