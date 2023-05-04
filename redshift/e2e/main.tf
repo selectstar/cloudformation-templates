@@ -24,9 +24,18 @@ module "vpc" {
   enable_dns_support   = true
 }
 
-resource "aws_db_subnet_group" "subnet-group" {
+resource "aws_subnet" "subnet" {
+  cidr_block = "10.0.7.0/24"
+  vpc_id     = module.vpc.vpc_id
+
+  tags = {
+    Name = var.name
+  }
+}
+
+resource "aws_redshift_subnet_group" "subnet_group" {
   name       = var.name
-  subnet_ids = module.vpc.public_subnets
+  subnet_ids = [aws_subnet.subnet.id]
 }
 
 resource "aws_security_group" "security-group" {
@@ -40,6 +49,7 @@ resource "aws_security_group" "security-group" {
     ]
   }
 }
+
 // E2E setup for master
 resource "aws_redshift_cluster" "e2e" {
   cluster_identifier                  = "test-e2e-cloudformation"
@@ -50,6 +60,7 @@ resource "aws_redshift_cluster" "e2e" {
   cluster_type                        = "single-node"
   automated_snapshot_retention_period = 0
   skip_final_snapshot                 = true
+  cluster_subnet_group_name           = aws_redshift_subnet_group.subnet_group.name
 
   lifecycle {
     # provision.py add a new ingress rules what we wanna ignore here
@@ -68,9 +79,11 @@ resource "aws_s3_bucket" "cloudformation-bucket" {
   bucket_prefix = "e2e-test"
 }
 
-resource "aws_s3_bucket_acl" "cloudformation-bucket" {
+resource "aws_s3_bucket_ownership_controls" "cloudformation-bucket" {
   bucket = aws_s3_bucket.cloudformation-bucket.id
-  acl    = "public-read"
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
 }
 
 resource "aws_s3_object" "cloudformation-object" {
@@ -78,7 +91,6 @@ resource "aws_s3_object" "cloudformation-object" {
 
   key    = "SelectStarRedshift.json"
   source = "${path.module}/../SelectStarRedshift.json"
-  acl    = "public-read"
 
   etag = filemd5("${path.module}/../SelectStarRedshift.json")
 }
