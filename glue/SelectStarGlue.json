@@ -38,9 +38,20 @@
                         {
                             "Effect": "Allow",
                             "Action": [
-                                "glue:*"
+                                "glue:GetTables",
+                                "glue:GetDatabases"
                             ],
-                            "Resource": "*"
+                            "Resource": [
+                                {
+                                    "Fn::Sub": "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+                                },
+                                {
+                                    "Fn::Sub": "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/*"
+                                },
+                                {
+                                    "Fn::Sub": "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/*"
+                                }
+                            ]
                         }
                     ]
                 },
