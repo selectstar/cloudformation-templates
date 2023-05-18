@@ -156,6 +156,7 @@
         "LoggingBucketPolicy": {
             "Type": "AWS::S3::BucketPolicy",
             "Condition": "CreateS3Bucket",
+            "DeletionPolicy": "Retain",
             "Properties": {
                 "Bucket": {
                     "Ref": "LoggingBucket"
