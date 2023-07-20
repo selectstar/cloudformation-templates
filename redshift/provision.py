@@ -325,13 +325,22 @@ def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
         )
 
 
+SKIP_DB = [
+    "awsdatacatalog"
+    # database for AWS Glue Data Catalog is a preview feature - https://app.shortcut.com/select-star/story/57903
+    # contact sales if you need to activate AWS Glue Data Catalog support
+]
+
+
 def fetch_databases(cluster, db, dbUser):
     for resp in redshiftdata_client.get_paginator("list_databases").paginate(
         ClusterIdentifier=cluster,
         Database=db,
         DbUser=dbUser,
     ):
-        yield from resp["Databases"]
+        for database in resp["Databases"]:
+            if database not in SKIP_DB:
+                yield database
 
 
 def handler(event, context):
