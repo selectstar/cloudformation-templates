@@ -61,3 +61,9 @@ variable "template_url" {
   default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/redshift/SelectStarRedshift.json"
   description = "The URL of CloudFormation Template used to provisioning integration. Don't change it unless you really know what you are doing."
 }
+
+variable "disable-rollback" {
+  type = bool
+  default = true
+  description = "Set to false to enable rollback of the stack if stack creation failed. "
+}

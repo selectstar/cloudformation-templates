@@ -13,7 +13,7 @@ data "aws_redshift_cluster" "redshift" {
 resource "aws_cloudformation_stack" "stack-master" {
   name = "${var.name_prefix}-${random_id.master-identifier.hex}"
 
-  disable_rollback = true
+  disable_rollback = var.disable-rollback
 
   parameters = {
     Cluster                   = data.aws_redshift_cluster.redshift.cluster_identifier
