@@ -33,7 +33,6 @@ def handler(event, context):
             )
         else:
             s3_client.copy_object(
-                ACL="public-read",
                 Bucket=dstBucket,
                 CopySource=f"{srcBucket}/{srcKey}",
                 Key=dstKey,
