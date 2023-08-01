@@ -108,9 +108,9 @@ def ensure_valid_cluster_engine(server):
         for x in instance["VpcSecurityGroups"]
         if x["Status"] == "active"
     ][0]
-    logging.info("Determined security group ID: %s", security_group_id)
+    logger.info("Determined security group ID: %s", security_group_id)
     endpoint_port = instance["Endpoint"]["Port"]
-    logging.info("Determined endpoint port: %s", endpoint_port)
+    logger.info("Determined endpoint port: %s", endpoint_port)
     return security_group_id, endpoint_port
 
 
@@ -122,13 +122,13 @@ def ensure_custom_parameter_group(server, configureLogging):
         not group["DBParameterGroupName"].startswith("default.")
         for group in instance["DBParameterGroups"]
     )
-    logging.info(
+    logger.info(
         "Determined DB instance parameter group. Enabled custom parameter group: %s",
         enabled_custom_parameter,
     )
 
     if enabled_custom_parameter:
-        logging.info(
+        logger.info(
             "Custom parameter group set already. Nothing to do.",
         )
     elif configureLogging:
@@ -155,13 +155,13 @@ def ensure_custom_parameter_group(server, configureLogging):
             DBParameterGroupName=parameter_group,
             DBParameterGroupFamily=family,
         )
-        logging.info("A new parameter group created: %s", parameter_group)
+        logger.info("A new parameter group created: %s", parameter_group)
         rds_client.modify_db_instance(
             DBInstanceIdentifier=server,
             ApplyImmediately=False,
             DBParameterGroupName=parameter_group,
         )
-        logging.info(
+        logger.info(
             "DB instance '%s' updated. A new parameter group set: %s",
             server,
             parameter_group,
@@ -209,7 +209,7 @@ def ensure_parameter_set(server, configureLogging, name, value):
             break
 
     if found_parameter is not None and found_parameter.get("ParameterValue") == value:
-        logging.info(
+        logger.info(
             "Parameter '%s' of parameter group '%s' already set to '%s'. Nothing to do.",
             name,
             target_parameter_group,
@@ -226,7 +226,7 @@ def ensure_parameter_set(server, configureLogging, name, value):
                 },
             ],
         )
-        logging.info(
+        logger.info(
             "Parameter '%s' of parameter group '%s' update to '%s'. ",
             name,
             target_parameter_group,
@@ -245,7 +245,7 @@ def ensure_log_exporting_enabled(server, configureLogging):
     ][0]
     enabled_log_export = instance.get("EnabledCloudwatchLogsExports", [])
     if "postgresql" in enabled_log_export:
-        logging.info(
+        logger.info(
             "Log export configured. Nothing to do.",
         )
     elif configureLogging:
@@ -258,12 +258,12 @@ def ensure_log_exporting_enabled(server, configureLogging):
                 ],
             },
         )
-        logging.info(
+        logger.info(
             "Exporting to CloudWatch enabling. Waiting to apply.",
         )
         waiter = rds_client.get_waiter("db_instance_available")
         waiter.wait(DBInstanceIdentifier=server)
-        logging.info(
+        logger.info(
             "Exporting to CloudWatch applied.",
         )
     else:
@@ -283,24 +283,24 @@ def ensure_instance_restarted(server, configureLoggingRestart):
         for group in instance["DBParameterGroups"]
     )
     if not any([pending_values, pending_parameter_group]):
-        logging.info(
+        logger.info(
             "No pending modifications. Nothing to do.",
         )
     elif configureLoggingRestart:
-        logging.info(
+        logger.info(
             "Instance requires reboot.",
         )
         rds_client.reboot_db_instance(
             DBInstanceIdentifier=server,
         )
-        logging.info(
+        logger.info(
             "Instance rebooted. Waiting to start.",
         )
         waiter = rds_client.get_waiter("db_instance_available")
         waiter.wait(DBInstanceIdentifier=server)
-        logging.info("Instance started after reboot.")
+        logger.info("Instance started after reboot.")
     else:
-        logging.warning(
+        logger.warning(
             "Pending modifications. They will probably be applied during the next maintenance window.",
         )
 
@@ -325,8 +325,34 @@ def execQuery(cur, text, noEcho=False, **parameters):
 SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
 
 
+def get_ip_address() -> str:
+    try:
+        ip_response = httpx_client.get("https://httpbin.org/ip", timeout=60.0)
+        ip_response.raise_for_status()
+        ip = ip_response.json()["origin"]
+    except httpx.HTTPError as exc:
+        logger.exception(
+            f"An error occurred while requesting {exc.request.url!r}. Trying another service.."
+        )
+
+        # Try another service in case of httpbin unavailability
+        try:
+            ip_response = httpx_client.get("https://ifconfig.me/ip", timeout=60.0)
+            ip_response.raise_for_status()
+            ip = ip_response.text
+        except httpx.HTTPError as exc2:
+            logger.exception(
+                f"An error occurred while requesting {exc2.request.url!r}."
+            )
+            raise
+
+    return ip
+
+
 def create_ingress_rules(instance) -> Tuple[str, Sequence[str]]:
-    ip = httpx_client.get("https://httpbin.org/ip").json()["origin"]
+    ip = get_ip_address()
+    logger.info(f"IP Address: {ip}")
+
     security_group_id = next(
         (x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]), None
     )
@@ -351,7 +377,7 @@ def create_ingress_rules(instance) -> Tuple[str, Sequence[str]]:
             ],
         )["SecurityGroupRules"]
         rules_ids = [rule["SecurityGroupRuleId"] for rule in security_groups_rules]
-        logging.info(
+        logger.info(
             "Added temporary ingress rule to enable access from '%s' to '%s' (port: %s): %s",
             ip,
             security_group_id,
@@ -362,7 +388,7 @@ def create_ingress_rules(instance) -> Tuple[str, Sequence[str]]:
     except botocore.exceptions.ClientError as err:
         # no need to add a new rule, it is there
         if err.response["Error"]["Code"] == "InvalidPermission.Duplicate":
-            logging.warning("Temporary ingress rule to enable access exist. Skipping")
+            logger.warning("Temporary ingress rule to enable access exist. Skipping")
             return security_group_id, []
         else:
             raise err
@@ -375,7 +401,7 @@ def remove_ingress_rules(security_group_id, security_groups_rules):
         GroupId=security_group_id,
         SecurityGroupRuleIds=security_groups_rules,
     )
-    logging.info("Removed temporary ingress rules: %s", security_groups_rules)
+    logger.info("Removed temporary ingress rules: %s", security_groups_rules)
 
 
 @contextmanager
@@ -385,7 +411,7 @@ def connect_instance(instance, user, dbname, password):
 
     It also temporarily opens security group ingress to allow this connection
     """
-    logging.info("Connecting to RDS instance: %s", instance["DBInstanceIdentifier"])
+    logger.info("Connecting to RDS instance: %s", instance["DBInstanceIdentifier"])
     security_group_id, security_groups_rules = create_ingress_rules(instance)
     with psycopg2.connect(
         host=instance["Endpoint"]["Address"],
@@ -406,7 +432,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
     ][0]
     secret_response = secret_client.get_secret_value(SecretId=secretArn)
     secret = json.loads(secret_response["SecretString"])
-    logging.info("Successfully retrieved & decoded secret: %s", secretArn)
+    logger.info("Successfully retrieved & decoded secret: %s", secretArn)
     with connect_instance(
         instance=instance,
         user=user,
@@ -430,7 +456,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
                 ).format(user=sql.Literal(user))
             )
             new_items = [SchemaItem(row[0], x.schema) for row in cur.fetchall()]
-            logging.info("Resolve placeholder in '*' to new schemas: %s", new_items)
+            logger.info("Resolve placeholder in '*' to new schemas: %s", new_items)
             schema.extend(new_items)
     for db_name, db_schemas in groupby(schema, key=lambda x: x.db_name):
         if db_name == "*":
@@ -454,7 +480,7 @@ def ensure_user_created(server, schema, user, password, secretArn):
                     "SELECT nspname FROM pg_catalog.pg_namespace where nspname not like 'pg_%';"
                 )
                 db_schemas = [SchemaItem(x.db_name, row[0]) for row in cur.fetchall()]
-                logging.info("Resolve placeholder '*' to schemas: %s", db_schemas)
+                logger.info("Resolve placeholder '*' to schemas: %s", db_schemas)
             for schema_item in db_schemas:
                 execQuery(
                     cur,
@@ -495,7 +521,7 @@ def ensure_user_schema_revoked(cur, username):
         ).format(user=sql.Literal(username))
     )
     schema = [row[0] for row in cur.fetchall()]
-    logging.info("Determined schemas to revoke permission: %s", schema)
+    logger.info("Determined schemas to revoke permission: %s", schema)
     for name in schema:
         execQuery(
             cur,
@@ -523,7 +549,7 @@ def ensure_user_removed(server, user, password, secretArn):
     ][0]
     secret_response = secret_client.get_secret_value(SecretId=secretArn)
     secret = json.loads(secret_response["SecretString"])
-    logging.info("Successfully retrieved & decoded secret: %s", secretArn)
+    logger.info("Successfully retrieved & decoded secret: %s", secretArn)
     with connect_instance(
         instance=instance,
         user=user,
@@ -548,7 +574,7 @@ def ensure_user_removed(server, user, password, secretArn):
             ) as cur:
                 ensure_user_schema_revoked(cur, secret["username"])
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 "Failed to revoke permission in database '%s': %s",
                 dbname,
                 e,
@@ -592,7 +618,7 @@ def handler(event, context):
         if event["RequestType"] == "Delete":
             primary_server = determine_primary_server(server)
             ensure_user_removed(primary_server, dbUser, dbPassword, secretArn)
-            logging.info("User removed successfully")
+            logger.info("User removed successfully")
 
             cfnresponse.send(
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
@@ -601,16 +627,16 @@ def handler(event, context):
             security_group_id, endpoint_port = ensure_valid_cluster_engine(server)
             primary_server = determine_primary_server(server)
             ensure_custom_parameter_group(server, configureLogging)
-            logging.info("Custom parameter group of instance configured successfully.")
+            logger.info("Custom parameter group of instance configured successfully.")
             ensure_parameter_set(server, configureLogging, "log_statement", "all")
             ensure_parameter_set(
                 server, configureLogging, "log_min_duration_statement", "0"
             )
-            logging.info("Custom parameter group configured successfully.")
+            logger.info("Custom parameter group configured successfully.")
             ensure_log_exporting_enabled(server, configureLogging)
-            logging.info("Custom log exporting configured successfully")
+            logger.info("Custom log exporting configured successfully")
             ensure_instance_restarted(server, configureLoggingRestart)
-            logging.info("Successfully ensured instance restarted (if allowed)")
+            logger.info("Successfully ensured instance restarted (if allowed)")
             # read-only replicas needs updates user configuration on primary
             ensure_user_created(primary_server, schema, dbUser, dbPassword, secretArn)
 
