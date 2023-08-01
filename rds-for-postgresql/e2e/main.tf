@@ -61,17 +61,11 @@ resource "aws_s3_bucket" "cloudformation-bucket" {
   bucket_prefix = "e2e-test"
 }
 
-resource "aws_s3_bucket_acl" "cloudformation-bucket" {
-  bucket = aws_s3_bucket.cloudformation-bucket.id
-  acl    = "public-read"
-}
-
 resource "aws_s3_object" "cloudformation-object" {
   bucket = aws_s3_bucket.cloudformation-bucket.id
 
   key    = "SelectStarRDS.json"
   source = "${path.module}/../SelectStarRDS.json"
-  acl    = "public-read"
 
   etag = filemd5("${path.module}/../SelectStarRDS.json")
 }
@@ -85,7 +79,7 @@ resource "aws_db_instance" "db-master" {
   instance_class           = "db.t3.micro"
   allocated_storage        = 5
   engine                   = "postgres"
-  engine_version           = "14.2"
+  engine_version           = "14.8"
   username                 = "edu"
   password                 = random_string.random.result
   db_subnet_group_name     = aws_db_subnet_group.subnet-group.name
