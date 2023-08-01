@@ -326,7 +326,28 @@ SchemaItem = namedtuple("SchemaItem", ["db_name", "schema"])
 
 
 def create_ingress_rules(instance) -> Tuple[str, Sequence[str]]:
-    ip = httpx_client.get("https://httpbin.org/ip").json()["origin"]
+    try:
+        ip_response = httpx_client.get("https://httpbin.org/ip", timeout=60.0)
+        ip_response.raise_for_status()
+        ip = ip_response.json()["origin"]
+    except httpx.HTTPError as exc:
+        logging.exception(
+            f"An error occurred while requesting {exc.request.url!r}. Trying another service.."
+        )
+
+        # Try another service in case of httpbin unavailability
+        try:
+            ip_response = httpx_client.get("https://ifconfig.me/ip", timeout=60.0)
+            ip_response.raise_for_status()
+            ip = ip_response.text
+        except httpx.HTTPError as exc2:
+            logging.exception(
+                f"An error occurred while requesting {exc2.request.url!r}."
+            )
+            raise
+
+    logging.info(f"IP Address: {ip}")
+
     security_group_id = next(
         (x["VpcSecurityGroupId"] for x in instance["VpcSecurityGroups"]), None
     )
