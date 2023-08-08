@@ -58,7 +58,6 @@ jobs:
       aws-region: us-east-2
       aws-bucket-name: select-star-production-cloudformation
       slack-job-name: "Deploy to production / deploy"
-      slack-notify-success: true
 
   deploy_staging:
     needs:
