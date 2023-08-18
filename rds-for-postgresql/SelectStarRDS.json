@@ -25,27 +25,6 @@
             "Description": "Password of PostgreSQL user used to connection for provision access for Select Star.",
             "AllowedPattern": ".+"
         },
-        "DbEngine": {
-            "Type": "String",
-            "Description": "Database Engine which is used by the AWS RDS",
-            "Default": "postgres",
-            "AllowedValues": [
-                "aurora-mysql",
-                "aurora-postgresql",
-                "custom-oracle-ee",
-                "mariadb",
-                "mysql",
-                "oracle-ee",
-                "oracle-ee-cdb",
-                "oracle-se2",
-                "oracle-se2-cdb",
-                "postgres",
-                "sqlserver-ee",
-                "sqlserver-se",
-                "sqlserver-ex",
-                "sqlserver-web"
-            ]
-        },
         "ProvisionAccessUserName": {
             "Type": "String",
             "Default": "selectstar",

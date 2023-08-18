@@ -239,12 +239,12 @@ def ensure_parameter_set(server, configureLogging, name, value):
         )
 
 
-def ensure_log_exporting_enabled(server, configureLogging, dbEngine):
+def ensure_log_exporting_enabled(server, configureLogging):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
     enabled_log_export = instance.get("EnabledCloudwatchLogsExports", [])
-    if dbEngine in enabled_log_export:
+    if "postgresql" in enabled_log_export:
         logger.info("Log export configured. Nothing to do.")
     elif configureLogging:
         rds_client.modify_db_instance(
@@ -252,7 +252,7 @@ def ensure_log_exporting_enabled(server, configureLogging, dbEngine):
             ApplyImmediately=False,
             CloudwatchLogsExportConfiguration={
                 "EnableLogTypes": [
-                    dbEngine,
+                    "postgresql",
                 ],
             },
         )
@@ -609,7 +609,6 @@ def handler(event, context):
 
         schema = [SchemaItem(*x.split(".")) for x in properties["Schema"].split(",")]
         dbUser = properties["DbUser"]
-        dbEngine = properties["DbEngine"]
         secretArn = properties["secretArn"]
         configureLogging = properties["ConfigureLogging"] == "true"
         configureLoggingRestart = properties["ConfigureLoggingRestart"] == "true"
@@ -632,7 +631,7 @@ def handler(event, context):
                 server, configureLogging, "log_min_duration_statement", "0"
             )
             logger.info("Custom parameter group configured successfully.")
-            ensure_log_exporting_enabled(server, configureLogging, dbEngine)
+            ensure_log_exporting_enabled(server, configureLogging)
             logger.info("Custom log exporting configured successfully")
             ensure_instance_restarted(server, configureLoggingRestart)
             logger.info("Successfully ensured instance restarted (if allowed)")
