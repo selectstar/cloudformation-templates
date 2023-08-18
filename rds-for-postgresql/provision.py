@@ -95,9 +95,9 @@ def determine_primary_server(server):
 
 def ensure_valid_cluster_engine(server):
     instance = fetch_instance(server)
-    if instance["Engine"] != "postgres":
+    if instance["Engine"] not in ["postgres", "aurora-postgresql"]:
         raise DataException(
-            "Unsupported DB engine - required 'postgres'. Verify engine of DB instance."
+            "Unsupported DB engine - required 'postgres', or 'aurora-postgresql'. Verify engine of DB instance."
         )
     if not instance["PubliclyAccessible"]:
         raise DataException(
@@ -239,22 +239,20 @@ def ensure_parameter_set(server, configureLogging, name, value):
         )
 
 
-def ensure_log_exporting_enabled(server, configureLogging):
+def ensure_log_exporting_enabled(server, configureLogging, dbEngine):
     instance = rds_client.describe_db_instances(DBInstanceIdentifier=server)[
         "DBInstances"
     ][0]
     enabled_log_export = instance.get("EnabledCloudwatchLogsExports", [])
-    if "postgresql" in enabled_log_export:
-        logger.info(
-            "Log export configured. Nothing to do.",
-        )
+    if dbEngine in enabled_log_export:
+        logger.info("Log export configured. Nothing to do.")
     elif configureLogging:
         rds_client.modify_db_instance(
             DBInstanceIdentifier=server,
             ApplyImmediately=False,
             CloudwatchLogsExportConfiguration={
                 "EnableLogTypes": [
-                    "postgresql",
+                    dbEngine,
                 ],
             },
         )
@@ -611,6 +609,7 @@ def handler(event, context):
 
         schema = [SchemaItem(*x.split(".")) for x in properties["Schema"].split(",")]
         dbUser = properties["DbUser"]
+        dbEngine = properties["DbEngine"]
         secretArn = properties["secretArn"]
         configureLogging = properties["ConfigureLogging"] == "true"
         configureLoggingRestart = properties["ConfigureLoggingRestart"] == "true"
@@ -633,7 +632,7 @@ def handler(event, context):
                 server, configureLogging, "log_min_duration_statement", "0"
             )
             logger.info("Custom parameter group configured successfully.")
-            ensure_log_exporting_enabled(server, configureLogging)
+            ensure_log_exporting_enabled(server, configureLogging, dbEngine)
             logger.info("Custom log exporting configured successfully")
             ensure_instance_restarted(server, configureLoggingRestart)
             logger.info("Successfully ensured instance restarted (if allowed)")
