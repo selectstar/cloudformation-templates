@@ -28,6 +28,7 @@
         "DbEngine": {
             "Type": "String",
             "Description": "Database Engine which is used by the AWS RDS",
+            "Default": "postgres",
             "AllowedValues": [
                 "aurora-mysql",
                 "aurora-postgresql",
