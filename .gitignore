@@ -1,7 +1,10 @@
 **/__pycache__
 **/.env
+.venv
 .vscode
+.idea
 **/package
 **/*.zip
 terraform.tfstate*
 .terraform
+**/.DS_Store

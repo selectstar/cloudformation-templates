@@ -22,9 +22,11 @@ resource "aws_s3_bucket" "cloudformation-bucket" {
   bucket_prefix = "e2e-test"
 }
 
-resource "aws_s3_bucket_acl" "cloudformation-bucket" {
+resource "aws_s3_bucket_ownership_controls" "cloudformation-bucket" {
   bucket = aws_s3_bucket.cloudformation-bucket.id
-  acl    = "public-read"
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
 }
 
 resource "aws_s3_object" "cloudformation-object" {
@@ -32,7 +34,6 @@ resource "aws_s3_object" "cloudformation-object" {
 
   key    = "SelectStarGlue.json"
   source = "${path.module}/../SelectStarGlue.json"
-  acl    = "public-read"
 
   etag = filemd5("${path.module}/../SelectStarGlue.json")
 }

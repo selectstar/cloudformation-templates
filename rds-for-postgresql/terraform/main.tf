@@ -13,7 +13,7 @@ data "aws_db_instance" "rds" {
 resource "aws_cloudformation_stack" "rds-stack" {
   name = "${var.name_prefix}-${random_id.db-identifier.hex}"
 
-  disable_rollback = true
+  disable_rollback = var.disable_rollback
 
   parameters = {
     ServerName                = data.aws_db_instance.rds.db_instance_identifier
