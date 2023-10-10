@@ -116,67 +116,14 @@ module "stack-master" {
   source = "../terraform"
 
   # make sure it matches the example in /rds-for-postgresql/terraform/README.md
-  db_identifier               = aws_db_instance.db-master.identifier
-  provisioning_user           = aws_db_instance.db-master.username
-  provisioning_user_password  = random_string.random.result
-  external_id                 = "X"
-  iam_principal               = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+  db_identifier = aws_db_instance.db-master.identifier
+  external_id   = "X"
+  iam_principal = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
 
-  template_url                = local.template_url
+  template_url = local.template_url
 
   depends_on = [
     aws_db_instance.db-master
-  ]
-}
-
-
-// E2E setup for replica
-resource "aws_db_instance" "db-replica" {
-  identifier               = "${var.name}-replica"
-  instance_class           = "db.t3.micro"
-  allocated_storage        = 5
-  vpc_security_group_ids   = [aws_security_group.security-group.id]
-  parameter_group_name     = aws_db_parameter_group.test-e2e-cloudformation.name
-  publicly_accessible      = true
-  skip_final_snapshot      = true
-  delete_automated_backups = true
-  backup_retention_period  = 1
-  apply_immediately        = true
-
-  replicate_source_db = aws_db_instance.db-master.id
-
-  lifecycle {
-    # provision.py add a new ingress rules what we wanna ignore here to aovid rollback
-    ignore_changes = [
-      enabled_cloudwatch_logs_exports,
-    ]
-  }
-}
-
-resource "random_id" "replica-identifier" {
-  keepers = {
-    identifier = aws_db_instance.db-replica.identifier
-    etag       = aws_s3_object.cloudformation-object.etag
-  }
-
-  byte_length = 8
-}
-
-module "stack-replica" {
-  source = "../terraform"
-
-  # make sure it matches the example in /rds-for-postgresql/terraform/README.md
-  db_identifier               = aws_db_instance.db-replica.identifier
-  provisioning_user           = aws_db_instance.db-replica.username
-  provisioning_user_password  = random_string.random.result
-  access_user                 = "selectstar-replica-${random_id.replica-identifier.hex}"
-  external_id                 = "X"
-  iam_principal               = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-
-  template_url                = local.template_url
-
-  depends_on = [
-    aws_db_instance.db-replica
   ]
 }
 
@@ -197,42 +144,4 @@ resource "aws_security_group_rule" "example" {
   ]
 }
 
-## Validation
-data "aws_secretsmanager_secret_version" "master" {
-  secret_id = module.stack-master.secret_arn
-}
-data "aws_secretsmanager_secret_version" "replica" {
-  secret_id = module.stack-replica.secret_arn
-}
-locals {
-  master_username  = jsondecode(data.aws_secretsmanager_secret_version.master.secret_string)["username"]
-  master_password  = jsondecode(data.aws_secretsmanager_secret_version.master.secret_string)["password"]
-  replica_username = jsondecode(data.aws_secretsmanager_secret_version.replica.secret_string)["username"]
-  replica_password = jsondecode(data.aws_secretsmanager_secret_version.replica.secret_string)["password"]
-}
-
-resource "null_resource" "connect-psql-master" {
-  provisioner "local-exec" {
-    command = "psql -c 'select 1'"
-    environment = {
-      PGPASSWORD = local.master_password
-      PGUSER     = local.master_username
-      PGDATABASE = "postgres"
-      PGHOST     = aws_db_instance.db-master.address
-      PGPORT     = aws_db_instance.db-master.port
-    }
-  }
-}
-
-resource "null_resource" "connect-psql-replica" {
-  provisioner "local-exec" {
-    command = "psql -c 'select 1'"
-    environment = {
-      PGPASSWORD = local.replica_password
-      PGUSER     = local.replica_username
-      PGDATABASE = "postgres"
-      PGHOST     = aws_db_instance.db-replica.address
-      PGPORT     = aws_db_instance.db-replica.port
-    }
-  }
-}
+# TODO: Validate assume role & access to AWS CloudWatch

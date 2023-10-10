@@ -7,29 +7,6 @@
             "AllowedPattern": "[\\w-]+",
             "Description": "Also known as \"DB identifier\" by AWS."
         },
-        "Schema": {
-            "Description": "Comma separated list of PostgreSQL schemas in format '<database>.<schema>' to grant access for Select Star. You might use wildcard eg. '*.*'.",
-            "Type": "String",
-            "Default": "*.*",
-            "AllowedPattern": "([^.,]+\\.[^.,]+)(,[^.,]+\\.[^.,]+)*"
-        },
-        "DbUser": {
-            "Type": "String",
-            "Default": "postgres",
-            "Description": "PostgreSQL username used to connection for provision access for Select Star. This user is used only by CloudFormation for the purposes of eg. creating a user account with minimal rights, including without access to data necessary for integration.",
-            "AllowedPattern": ".+"
-        },
-        "DbPassword": {
-            "Type": "String",
-            "NoEcho": true,
-            "Description": "Password of PostgreSQL user used to connection for provision access for Select Star.",
-            "AllowedPattern": ".+"
-        },
-        "ProvisionAccessUserName": {
-            "Type": "String",
-            "Default": "selectstar",
-            "Description": "Username for Select Star to that will be created and used to connect to your databases."
-        },
         "ExternalId": {
             "Description": "The Select Star external ID to authenticate your AWS account. Do not change or share this.",
             "MinLength": "1",
@@ -39,45 +16,6 @@
             "Description": "The Select Star IAM principal which has permission to your AWS account. Do not change this.",
             "MinLength": "1",
             "Type": "String"
-        },
-        "ConfigureLogging": {
-            "Type": "String",
-            "AllowedValues": [
-                "true",
-                "false"
-            ],
-            "Description": "If true and CloudWatch logging disabled then the PostgreSQL instance configuration can be changed to enable CloudWatch logging. It is recommended to set the value \"true\"."
-        },
-        "ConfigureLoggingRestart": {
-            "Type": "String",
-            "AllowedValues": [
-                "true",
-                "false"
-            ],
-            "Description": "If true and logging changes made then the PostgreSQL instance can be restarted to apply changes. It is recommended to set the value \"true\"."
-        },
-        "CidrIpPrimary": {
-            "Description": "The Select Star primary address range that will gain network access to the PostgreSQL instance. Do not change this.",
-            "Type": "String",
-            "Default": "3.23.108.85/32",
-            "AllowedValues": [
-                "3.23.108.85/32",
-                "3.20.56.105/32"
-            ]
-        },
-        "CidrIpSecondary": {
-            "Description": "The Select Star secondary address range that will gain network access to the PostgreSQL instance. Do not change this.",
-            "Type": "String",
-            "Default": "3.20.56.105/32",
-            "AllowedValues": [
-                "3.23.108.85/32",
-                "3.20.56.105/32"
-            ]
-        },
-        "SentryDsn": {
-            "Description": "URL for reporting any errors in provisioning execution. Don't change it unless you really know what you are doing.",
-            "Type": "String",
-            "Default": "https://14d65555628a4b6f84fcb83ef1511778@o407979.ingest.sentry.io/6639248"
         }
     },
     "Metadata": {
@@ -88,9 +26,7 @@
                         "default": "AWS RDS for PostgreSQL configuration"
                     },
                     "Parameters": [
-                        "ServerName",
-                        "DbUser",
-                        "DbPassword"
+                        "ServerName"
                     ]
                 },
                 {
@@ -110,49 +46,18 @@
                     },
                     "Parameters": [
                         "ExternalId",
-                        "IamPrincipal",
-                        "CidrIpPrimary",
-                        "CidrIpSecondary",
-                        "SentryDsn"
+                        "IamPrincipal"
                     ]
                 }
             ],
             "ParameterLabels": {
                 "ServerName": {
                     "default": "RDS server name"
-                },
-                "Schema": {
-                    "default": "PostgreSQL schema granted"
-                },
-                "ConfigureLogging": {
-                    "default": "Configure CloudWatch logging (if disabled)"
-                },
-                "ConfigureLoggingRestart": {
-                    "default": "Restart Server (if necessary to apply changes)"
-                },
-                "ProvisionAccessUserName": {
-                    "default": "Provided user name for Select Star to access your metadata"
                 }
             }
         }
     },
     "Resources": {
-        "DatabaseSecret": {
-            "Type": "AWS::SecretsManager::Secret",
-            "Properties": {
-                "Name": {
-                    "Fn::Sub": "${AWS::StackName}/selectstar-user-credentials"
-                },
-                "GenerateSecretString": {
-                    "SecretStringTemplate": {
-                        "Fn::Sub": "{\"username\": \"${ProvisionAccessUserName}\"}"
-                    },
-                    "GenerateStringKey": "password",
-                    "PasswordLength": 20,
-                    "ExcludeCharacters": "\"@/\\"
-                }
-            }
-        },
         "CrossAccountRolePolicy": {
             "Type": "AWS::IAM::Policy",
             "Properties": {
@@ -168,15 +73,6 @@
                             ],
                             "Resource": {
                                 "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ServerName}"
-                            }
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "rds-db:connect"
-                            ],
-                            "Resource": {
-                                "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:dbuser:db-${ServerName}/selectstar"
                             }
                         },
                         {
@@ -200,18 +96,6 @@
                             ],
                             "Effect": "Allow",
                             "Resource": "arn:aws:logs:*:*:log-group::log-stream:"
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "secretsmanager:GetResourcePolicy",
-                                "secretsmanager:GetSecretValue",
-                                "secretsmanager:DescribeSecret",
-                                "secretsmanager:ListSecretVersionIds"
-                            ],
-                            "Resource": {
-                                "Ref": "DatabaseSecret"
-                            }
                         }
                     ]
                 },
@@ -221,12 +105,6 @@
                         "Ref": "CrossAccountRole"
                     }
                 ]
-            }
-        },
-        "LambdaBucket": {
-            "Type": "AWS::S3::Bucket",
-            "Properties": {
-                "AccessControl": "Private"
             }
         },
         "CrossAccountRole": {
@@ -256,265 +134,6 @@
                     ]
                 }
             }
-        },
-        "LambdaRole": {
-            "Type": "AWS::IAM::Role",
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {
-                                "Service": "lambda.amazonaws.com"
-                            },
-                            "Action": [
-                                "sts:AssumeRole"
-                            ]
-                        }
-                    ]
-                },
-                "Policies": [
-                    {
-                        "PolicyName": "LambdaAccess",
-                        "PolicyDocument": {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "rds:*",
-                                        "rds-db:*"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:*"
-                                    ],
-                                    "Resource": [
-                                        {
-                                            "Fn::Sub": [
-                                                "arn:aws:s3:::${BucketName}",
-                                                {
-                                                    "BucketName": {
-                                                        "Ref": "LambdaBucket"
-                                                    }
-                                                }
-                                            ]
-                                        },
-                                        {
-                                            "Fn::Sub": [
-                                                "arn:aws:s3:::${BucketName}/*",
-                                                {
-                                                    "BucketName": {
-                                                        "Ref": "LambdaBucket"
-                                                    }
-                                                }
-                                            ]
-                                        }
-                                    ]
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetObject"
-                                    ],
-                                    "Resource": "*"
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "secretsmanager:GetResourcePolicy",
-                                        "secretsmanager:GetSecretValue",
-                                        "secretsmanager:DescribeSecret",
-                                        "secretsmanager:ListSecretVersionIds"
-                                    ],
-                                    "Resource": {
-                                        "Ref": "DatabaseSecret"
-                                    }
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "ec2:AuthorizeSecurityGroupIngress",
-                                        "ec2:RevokeSecurityGroupIngress"
-                                    ],
-                                    "Resource": "*"
-                                }
-                            ]
-                        }
-                    }
-                ],
-                "ManagedPolicyArns": [
-                    "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-                    "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
-                ]
-            }
-        },
-        "LambdaCopyFunction": {
-            "Type": "AWS::Lambda::Function",
-            "Properties": {
-                "Timeout": 60,
-                "Code": {
-                    "ZipFile": "import json\nimport logging\nimport cfnresponse\nimport boto3\n\nlogging.basicConfig(\n    format=\"%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s\",\n    datefmt=\"%Y-%m-%d:%H:%M:%S\",\n    level=logging.INFO,\n)\n\nlogger = logging.getLogger(__name__)\nlogger.setLevel(logging.INFO)\n\ns3_client = boto3.client(\"s3\")\n\n\ndef handler(event, context):\n    logger.info(json.dumps(event))\n    try:\n        properties = event[\"ResourceProperties\"]\n        srcBucket = properties[\"srcBucket\"]\n        srcKey = properties[\"srcKey\"]\n        dstBucket = properties[\"dstBucket\"]\n        dstKey = properties[\"dstKey\"]\n        if event[\"RequestType\"] == \"Delete\":\n            s3_client.delete_object(\n                Bucket=dstBucket,\n                Key=dstKey,\n            )\n            cfnresponse.send(\n                event, context, cfnresponse.SUCCESS, {\"Data\": \"Delete complete\"}\n            )\n        else:\n            s3_client.copy_object(\n                ACL=\"public-read\",\n                Bucket=dstBucket,\n                CopySource=f\"{srcBucket}/{srcKey}\",\n                Key=dstKey,\n            )\n            return cfnresponse.send(\n                event,\n                context,\n                cfnresponse.SUCCESS,\n                {\n                    \"result\": \"Copy complete\",\n                    \"Copy\": {\"S3Bucket\": dstBucket, \"S3Key\": dstKey},\n                },\n                reason=\"Create complete\",\n            )\n    except Exception as e:\n        logging.error(e)\n        return cfnresponse.send(\n            event,\n            context,\n            cfnresponse.FAILED,\n            {},\n            reason=\"Something failed. See the details in CloudWatch Log Stream: {}\".format(\n                context.log_stream_name\n            ),\n        )\n"
-                },
-                "Handler": "index.handler",
-                "Role": {
-                    "Fn::GetAtt": [
-                        "LambdaRole",
-                        "Arn"
-                    ]
-                },
-                "Runtime": "python3.9",
-                "TracingConfig": {
-                    "Mode": "Active"
-                }
-            }
-        },
-        "LambdaCopy": {
-            "Type": "Custom::LambdaCopy",
-            "Version": "1.0",
-            "Properties": {
-                "ServiceToken": {
-                    "Fn::GetAtt": [
-                        "LambdaCopyFunction",
-                        "Arn"
-                    ]
-                },
-                "srcBucket": "cf-templates-pp3cips1o7jf-us-east-2",
-                "srcKey": "rds-for-postgresql/deployment-package.zip",
-                "dstBucket": {
-                    "Ref": "LambdaBucket"
-                },
-                "dstKey": "deployment-package.zip"
-            }
-        },
-        "LambdaFunction": {
-            "Type": "AWS::Lambda::Function",
-            "Properties": {
-                "Timeout": 300,
-                "Handler": "provision.handler",
-                "Code": {
-                    "Fn::GetAtt": [
-                        "LambdaCopy",
-                        "Copy"
-                    ]
-                },
-                "Environment": {
-                    "Variables": {
-                        "SENTRY_DSN": {
-                            "Ref": "SentryDsn"
-                        }
-                    }
-                },
-                "Role": {
-                    "Fn::GetAtt": [
-                        "LambdaRole",
-                        "Arn"
-                    ]
-                },
-                "Runtime": "python3.8",
-                "TracingConfig": {
-                    "Mode": "Active"
-                }
-            }
-        },
-        "LambdaProvision": {
-            "Type": "Custom::LambdaProvision",
-            "Version": "1.0",
-            "Properties": {
-                "ServiceToken": {
-                    "Fn::GetAtt": [
-                        "LambdaFunction",
-                        "Arn"
-                    ]
-                },
-                "secretArn": {
-                    "Ref": "DatabaseSecret"
-                },
-                "ServerName": {
-                    "Ref": "ServerName"
-                },
-                "Schema": {
-                    "Ref": "Schema"
-                },
-                "DbUser": {
-                    "Ref": "DbUser"
-                },
-                "DbPassword": {
-                    "Ref": "DbPassword"
-                },
-                "Region": {
-                    "Fn::Sub": "${AWS::Region}"
-                },
-                "ConfigureLogging": {
-                    "Ref": "ConfigureLogging"
-                },
-                "ConfigureLoggingRestart": {
-                    "Ref": "ConfigureLoggingRestart"
-                }
-            }
-        },
-        "InboundPrimaryRule": {
-            "Type": "AWS::EC2::SecurityGroupIngress",
-            "Properties": {
-                "IpProtocol": "tcp",
-                "Description": {
-                    "Fn::Sub": "Authorize primary Select Star address range to access PostgreSQL instance: ${ServerName}"
-                },
-                "FromPort": {
-                    "Fn::GetAtt": [
-                        "LambdaProvision",
-                        "EndpointPort"
-                    ]
-                },
-                "ToPort": {
-                    "Fn::GetAtt": [
-                        "LambdaProvision",
-                        "EndpointPort"
-                    ]
-                },
-                "CidrIp": {
-                    "Ref": "CidrIpPrimary"
-                },
-                "GroupId": {
-                    "Fn::GetAtt": [
-                        "LambdaProvision",
-                        "SecurityGroupId"
-                    ]
-                }
-            }
-        },
-        "InboundSecondaryRule": {
-            "Type": "AWS::EC2::SecurityGroupIngress",
-            "Properties": {
-                "IpProtocol": "tcp",
-                "Description": {
-                    "Fn::Sub": "Authorize secondary Select Star addresss range to access PostgreSQL instance ${ServerName}"
-                },
-                "FromPort": {
-                    "Fn::GetAtt": [
-                        "LambdaProvision",
-                        "EndpointPort"
-                    ]
-                },
-                "ToPort": {
-                    "Fn::GetAtt": [
-                        "LambdaProvision",
-                        "EndpointPort"
-                    ]
-                },
-                "CidrIp": {
-                    "Ref": "CidrIpSecondary"
-                },
-                "GroupId": {
-                    "Fn::GetAtt": [
-                        "LambdaProvision",
-                        "SecurityGroupId"
-                    ]
-                }
-            }
         }
     },
     "Outputs": {
@@ -526,12 +145,6 @@
                 ]
             },
             "Description": "The ARN value of the Cross-Account Role with IAM read-only permissions. Add this ARN value to Select Star."
-        },
-        "SecretArn": {
-            "Value": {
-                "Ref": "DatabaseSecret"
-            },
-            "Description": "The ARN value of the Secret of AWS Secret Manager which stores credentials for Select Star account in PostgreSQL. Add this ARN value to Select Star."
         }
     }
 }
