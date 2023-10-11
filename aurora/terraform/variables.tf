@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  default     = "selectstar-rds-postgresql"
+  default     = "selectstar-aurora"
   description = "AWS CloudFormation stack prefix name"
 }
 

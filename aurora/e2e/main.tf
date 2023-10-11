@@ -4,7 +4,7 @@ variable "region" {
 }
 
 variable "name" {
-  default = "test-rds-for-postgresql"
+  default = "test-aurora"
   type    = string
 }
 
@@ -73,25 +73,30 @@ resource "random_id" "master-identifier" {
 }
 
 resource "random_password" "secret" {
-  length = 32
+  length  = 32
+  special = false
 }
 
 resource "aws_rds_cluster" "db-master" {
   cluster_identifier              = "${var.name}-master"
   engine                          = "aurora-postgresql"
-  availability_zones              = ["${var.region}a"]
+  availability_zones              = ["${var.region}a", "${var.region}b","${var.region}c"]
   database_name                   = "mydb"
   master_username                 = "foo"
+  db_subnet_group_name            = aws_db_subnet_group.subnet-group.name
+  vpc_security_group_ids          = [aws_security_group.security-group.id]
   master_password                 = random_password.secret.result
   backup_retention_period         = 1
   preferred_backup_window         = "07:00-09:00"
-  enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery", "postgresql"]
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+  skip_final_snapshot             = true
+
 }
 
 module "stack-master" {
   source = "../terraform"
 
-  # make sure it matches the example in /rds-for-postgresql/terraform/README.md
+  # make sure it matches the example in /aurora/terraform/README.md
   db_identifier = aws_rds_cluster.db-master.cluster_identifier
   external_id   = "X"
   iam_principal = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"

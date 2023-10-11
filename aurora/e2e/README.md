@@ -28,4 +28,4 @@ terraform destroy
 terraform destroy
 ```
 
-If the removal of CloudFormation Stack fails, it is worth restarting the operation, because then the stack is deleted without the problematic resources (most likely due to the impossibility of correct `LambdaFunction` execution).
+If the removal of CloudFormation Stack fails, it is worth restarting the operation, because then the stack is deleted without the problematic resources.
