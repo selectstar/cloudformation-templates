@@ -1,11 +1,11 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Stack to enable integration Select Star with AWS RDS for PostgreSQL",
+    "Description": "Stack to enable integration Select Star with AWS Aurora",
     "Parameters": {
         "ServerName": {
             "Type": "String",
             "AllowedPattern": "[\\w-]+",
-            "Description": "Also known as \"DB identifier\" by AWS."
+            "Description": "Also known as \"Cluster identifier\" by AWS."
         },
         "ExternalId": {
             "Description": "The Select Star external ID to authenticate your AWS account. Do not change or share this.",
@@ -23,7 +23,7 @@
             "ParameterGroups": [
                 {
                     "Label": {
-                        "default": "AWS RDS for PostgreSQL configuration"
+                        "default": "AWS Aurora configuration"
                     },
                     "Parameters": [
                         "ServerName"
@@ -52,7 +52,7 @@
             ],
             "ParameterLabels": {
                 "ServerName": {
-                    "default": "RDS server name"
+                    "default": "AWS Aurora cluster name"
                 }
             }
         }
@@ -86,7 +86,7 @@
                             ],
                             "Effect": "Allow",
                             "Resource": {
-                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/instance/${ServerName}/*:*"
+                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/cluster/${ServerName}/*:*"
                             }
                         },
                         {
