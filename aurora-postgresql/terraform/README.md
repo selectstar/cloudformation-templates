@@ -10,7 +10,7 @@ Example snippet usage:
 
 ```terraform
 module "stack" {
-  source = "github.com/selectstar/cloudformation-templates//aurora/terraform"
+  source = "github.com/selectstar/cloudformation-templates//aurora-postgresql/terraform"
 
   db_identifier               = "X"       # set to your Aurora DB identifier, eg. aws_rds_cluster.db-master.cluster_identifier
   external_id                 = "X"       # available in add new data source form
@@ -72,5 +72,5 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | Identifier of AWS IAM Role intended for use by Select Star to access the AWS Aurora instance and logs. Needs to be shared with Select Star in the new data source form. |
+| <a name="output_role_arn"></a> [role\_arn](#output\_role\_arn) | Identifier of AWS IAM Role intended for use by Select Star to access the AWS Aurora PostgreSQL instance and logs. Needs to be shared with Select Star in the new data source form. |
 <!-- END_TF_DOCS -->

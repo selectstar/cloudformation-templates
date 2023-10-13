@@ -53,8 +53,8 @@ jobs:
         run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
-      - name: Deploy Aurora
-        working-directory: './aurora'
+      - name: Deploy Aurora PostgreSQL
+        working-directory: './aurora-postgresql'
         run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}

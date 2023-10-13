@@ -1,4 +1,4 @@
-# CloudFormation template for AWS Aurora integration
+# CloudFormation template for AWS Aurora PostgreSQL integration
 
 ## Usage
 

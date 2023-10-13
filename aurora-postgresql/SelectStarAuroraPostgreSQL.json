@@ -1,8 +1,8 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "Stack to enable integration Select Star with AWS Aurora",
+    "Description": "Stack to enable integration Select Star with AWS Aurora PostgreSQL",
     "Parameters": {
-        "ServerName": {
+        "ClusterName": {
             "Type": "String",
             "AllowedPattern": "[\\w-]+",
             "Description": "Also known as \"Cluster identifier\" by AWS."
@@ -23,10 +23,10 @@
             "ParameterGroups": [
                 {
                     "Label": {
-                        "default": "AWS Aurora configuration"
+                        "default": "AWS Aurora PostgreSQL configuration"
                     },
                     "Parameters": [
-                        "ServerName"
+                        "ClusterName"
                     ]
                 },
                 {
@@ -51,8 +51,8 @@
                 }
             ],
             "ParameterLabels": {
-                "ServerName": {
-                    "default": "AWS Aurora cluster name"
+                "ClusterName": {
+                    "default": "AWS Aurora PostgreSQL cluster name"
                 }
             }
         }
@@ -72,7 +72,7 @@
                                 "rds:Get*"
                             ],
                             "Resource": {
-                                "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ServerName}"
+                                "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ClusterName}"
                             }
                         },
                         {
@@ -86,7 +86,7 @@
                             ],
                             "Effect": "Allow",
                             "Resource": {
-                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/cluster/${ServerName}/*:*"
+                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/cluster/${ClusterName}/*:*"
                             }
                         },
                         {

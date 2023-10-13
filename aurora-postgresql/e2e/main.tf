@@ -53,10 +53,10 @@ resource "aws_s3_bucket" "cloudformation-bucket" {
 resource "aws_s3_object" "cloudformation-object" {
   bucket = aws_s3_bucket.cloudformation-bucket.id
 
-  key    = "SelectStarAurora.json"
-  source = "${path.module}/../SelectStarAurora.json"
+  key    = "SelectStarAuroraPostgreSQL.json"
+  source = "${path.module}/../SelectStarAuroraPostgreSQL.json"
 
-  etag = filemd5("${path.module}/../SelectStarAurora.json")
+  etag = filemd5("${path.module}/../SelectStarAuroraPostgreSQL.json")
 }
 
 locals {
@@ -96,7 +96,7 @@ resource "aws_rds_cluster" "db-master" {
 module "stack-master" {
   source = "../terraform"
 
-  # make sure it matches the example in /aurora/terraform/README.md
+  # make sure it matches the example in /aurora-postgresql/terraform/README.md
   db_identifier = aws_rds_cluster.db-master.cluster_identifier
   external_id   = "X"
   iam_principal = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
