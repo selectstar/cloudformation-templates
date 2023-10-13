@@ -5,7 +5,7 @@ CloudFormation Templates to configure Select Star integrations with services in 
 * [AWS RDS for PostgreSQL](./rds-for-postgresql)
 * [AWS Redshift](./redshift)
 * [AWS Glue](./glue)
-* [AWS Aurora](./aurora)
+* [AWS Aurora PostgreSQL](./aurora-postgresql)
 
 Feel free to ask if you have any concerns.
 
