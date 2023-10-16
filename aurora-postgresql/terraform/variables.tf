@@ -28,7 +28,7 @@ variable "iam_principal" {
 
 variable "template_url" {
   type        = string
-  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/rds-for-postgresql/SelectStarRDS.json"
+  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/aurora-postgresql/SelectStarAuroraPostgreSQL.json"
   description = "The URL of CloudFormation Template used to provisioning integration. Don't change it unless you really know what you are doing."
 }
 
