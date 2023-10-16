@@ -1,2 +1,0 @@
-boto3==1.20.32 # match lambda runtime
-psycopg2-binary==2.9.3
