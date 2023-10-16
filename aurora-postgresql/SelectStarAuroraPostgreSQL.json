@@ -1,0 +1,150 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Stack to enable integration Select Star with AWS Aurora PostgreSQL",
+    "Parameters": {
+        "ClusterName": {
+            "Type": "String",
+            "AllowedPattern": "[\\w-]+",
+            "Description": "Also known as \"Cluster identifier\" by AWS."
+        },
+        "ExternalId": {
+            "Description": "The Select Star external ID to authenticate your AWS account. Do not change or share this.",
+            "MinLength": "1",
+            "Type": "String"
+        },
+        "IamPrincipal": {
+            "Description": "The Select Star IAM principal which has permission to your AWS account. Do not change this.",
+            "MinLength": "1",
+            "Type": "String"
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "AWS Aurora PostgreSQL configuration"
+                    },
+                    "Parameters": [
+                        "ClusterName"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Provisioning"
+                    },
+                    "Parameters": [
+                        "ConfigureLogging",
+                        "ConfigureLoggingRestart",
+                        "ProvisionAccessUserName",
+                        "Schema"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Read-only. Do not change this."
+                    },
+                    "Parameters": [
+                        "ExternalId",
+                        "IamPrincipal"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "ClusterName": {
+                    "default": "AWS Aurora PostgreSQL cluster name"
+                }
+            }
+        }
+    },
+    "Resources": {
+        "CrossAccountRolePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "rds:List*",
+                                "rds:Describe*",
+                                "rds:Get*"
+                            ],
+                            "Resource": {
+                                "Fn::Sub": "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ClusterName}"
+                            }
+                        },
+                        {
+                            "Action": [
+                                "logs:Get*",
+                                "logs:List*",
+                                "logs:StartQuery",
+                                "logs:StopQuery",
+                                "logs:Describe*",
+                                "logs:FilterLogEvents"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": {
+                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/cluster/${ClusterName}/*:*"
+                            }
+                        },
+                        {
+                            "Action": [
+                                "logs:GetQueryResults",
+                                "logs:DescribeLogGroups"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": "arn:aws:logs:*:*:log-group::log-stream:"
+                        }
+                    ]
+                },
+                "PolicyName": "EnableSelectStar",
+                "Roles": [
+                    {
+                        "Ref": "CrossAccountRole"
+                    }
+                ]
+            }
+        },
+        "CrossAccountRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": {
+                                    "Ref": "IamPrincipal"
+                                }
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "sts:ExternalId": {
+                                        "Ref": "ExternalId"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "RoleArn": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "CrossAccountRole",
+                    "Arn"
+                ]
+            },
+            "Description": "The ARN value of the Cross-Account Role with IAM read-only permissions. Add this ARN value to Select Star."
+        }
+    }
+}

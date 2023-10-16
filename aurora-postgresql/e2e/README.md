@@ -1,4 +1,4 @@
-# E2E tests for CloudFormation template for AWS for PostgreSQL integration
+# E2E tests for CloudFormation template for AWS Aurora PostgreSQL integration
 
 These tests are intended to verify the E2E of the CloudFormation template. During their operation, the infrastructure is created and then the CloudFormation stack is created.
 
@@ -29,10 +29,3 @@ terraform destroy
 ```
 
 If the removal of CloudFormation Stack fails, it is worth restarting the operation, because then the stack is deleted without the problematic resources.
-
-To force CloudFormation Stack to recreate use:
-
-```bash
-terraform taint random_id.master-identifier
-terraform taint random_id.replica-identifier
-```
