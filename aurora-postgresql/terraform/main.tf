@@ -1,6 +1,6 @@
 resource "random_id" "db-identifier" {
   keepers = {
-    prefix = var.name_prefix
+    prefix     = var.name_prefix
     identifier = var.db_identifier
   }
   byte_length = 8
@@ -16,9 +16,9 @@ resource "aws_cloudformation_stack" "rds-stack" {
   disable_rollback = var.disable_rollback
 
   parameters = {
-    ServerName                = data.aws_rds_cluster.rds.cluster_identifier
-    ExternalId                = var.external_id
-    IamPrincipal              = var.iam_principal
+    ClusterName  = data.aws_rds_cluster.rds.cluster_identifier
+    ExternalId   = var.external_id
+    IamPrincipal = var.iam_principal
   }
 
   capabilities = ["CAPABILITY_IAM"]
