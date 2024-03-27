@@ -26,6 +26,7 @@ resource "aws_cloudformation_stack" "stack-master" {
     CidrIpSecondary           = "3.20.56.105/32"
     ConfigureS3Logging        = var.configure_s3_logging
     ConfigureS3LoggingRestart = var.configure_s3_logging_restart
+    ConfigureNetwork          = var.configure_network
     SentryDsn                 = "https://14d65555628a4b6f84fcb83ef1511778@o407979.ingest.sentry.io/6639248"
   }
 

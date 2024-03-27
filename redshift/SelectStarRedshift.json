@@ -448,7 +448,9 @@
                                 "redshift:ModifyClusterParameterGroup",
                                 "redshift:ModifyCluster",
                                 "redshift:RebootCluster",
-                                "redshift-data:ExecuteStatement"
+                                "redshift:GetClusterCredentials",
+                                "redshift-data:ExecuteStatement",
+                                "redshift-data:ListDatabases"
                             ],
                             "Resource": [
                                 {

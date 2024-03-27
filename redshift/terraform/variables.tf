@@ -56,6 +56,12 @@ variable "configure_s3_logging_restart" {
   description = "If true and logging changes made then the Redshift cluster can be restarted to apply changes. It is recommended to set the value \"true\"."
 }
 
+variable "configure_network" {
+  type = bool
+  default = true
+  description = "The default AWS Redshfit configuration requires the instance to be public to access metadata. If true then we verify that the Redshift instance is public and configure VPC security group rules to allow access. Do not change this parameter unless you have been specifically instructed otherwise by the support team.\n\nTo connect to an private instance, contact the support team to select the optimal connectivity solution."
+}
+
 variable "template_url" {
   type        = string
   default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/redshift/SelectStarRedshift.json"
