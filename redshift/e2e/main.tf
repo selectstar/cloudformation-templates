@@ -8,6 +8,11 @@ variable "name" {
   type    = string
 }
 
+variable "configure_network" { ## Flag for test case
+  default = true
+  type = bool
+}
+
 data "aws_availability_zones" "available" {}
 
 data "aws_caller_identity" "current" {}
@@ -61,7 +66,7 @@ resource "aws_redshift_cluster" "e2e" {
   automated_snapshot_retention_period = 0
   skip_final_snapshot                 = true
   cluster_subnet_group_name           = aws_redshift_subnet_group.subnet_group.name
-
+  publicly_accessible                 = var.configure_network
   lifecycle {
     # provision.py add a new ingress rules what we wanna ignore here
     ignore_changes = [
@@ -119,7 +124,7 @@ module "stack-master" {
   provisioning_database = aws_redshift_cluster.e2e.database_name
   external_id           = "X"
   iam_principal         = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-
+  configure_network     = var.configure_network
   template_url = local.template_url
 
   depends_on = [
