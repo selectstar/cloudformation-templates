@@ -136,7 +136,7 @@
                     "default": "Restart Cluster (if necessary to apply changes)"
                 },
                 "ConfigureNetwork": {
-                    "default": "Ignore public access checking"
+                    "default": "Configure network access"
                 }
             }
         }
