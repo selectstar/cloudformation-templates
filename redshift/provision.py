@@ -210,7 +210,9 @@ def create_cluster_parameter_group(parameter_group, prefix):
                 Description="Created by CloudFormation on provisioning Select Star",
             )
             return name
-        except redshift_client.exceptions.ClusterParameterGroupAlreadyExistsFault as err:
+        except (
+            redshift_client.exceptions.ClusterParameterGroupAlreadyExistsFault
+        ) as err:
             logger.warn(f"API call failed ({err}); continue with new suffix...")
             continue
     raise DataException(
