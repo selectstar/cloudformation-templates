@@ -68,6 +68,15 @@
             ],
             "Description": "If true and logging changes made then the Redshift cluster can be restarted to apply changes. It is recommended to set the value \"true\"."
         },
+        "ConfigureNetwork": {
+            "Type": "String",
+            "Default": "false",
+            "AllowedValues": [
+                "true",
+                "false"
+            ],
+            "Description": "The default AWS Redshfit configuration requires the instance to be public to access metadata. If true then we verify that the Redshift instance is public and configure VPC security group rules to allow access. Do not change this parameter unless you have been specifically instructed otherwise by the support team.\n\nTo connect to an private instance, contact the support team to select the optimal connectivity solution."
+        },
         "SentryDsn": {
             "Description": "URL for reporting any errors in provisioning execution. Don't change it unless you really know what you are doing.",
             "Type": "String",
@@ -94,7 +103,8 @@
                     },
                     "Parameters": [
                         "ConfigureS3Logging",
-                        "ConfigureS3LoggingRestart"
+                        "ConfigureS3LoggingRestart",
+                        "ConfigureNetwork"
                     ]
                 },
                 {
@@ -124,6 +134,9 @@
                 },
                 "ConfigureS3LoggingRestart": {
                     "default": "Restart Cluster (if necessary to apply changes)"
+                },
+                "ConfigureNetwork": {
+                    "default": "Configure network access"
                 }
             }
         }
@@ -133,6 +146,14 @@
             "Fn::Equals": [
                 {
                     "Ref": "ConfigureS3Logging"
+                },
+                "true"
+            ]
+        },
+        "CreateVPCRules": {
+            "Fn::Equals": [
+                {
+                    "Ref": "ConfigureNetwork"
                 },
                 "true"
             ]
@@ -417,8 +438,19 @@
                         {
                             "Effect": "Allow",
                             "Action": [
-                                "redshift:*",
-                                "redshift-data:*"
+                                "redshift:DescribeClusters",
+                                "redshift:DescribeLoggingStatus",
+                                "redshift:DescribeClusterParameters",
+                                "redshift:DescribeClusterParameterGroups",
+                                "redshift:CreateClusterParameterGroup",
+                                "redshift:EnableLogging",
+                                "redshift:ModifyClusterIamRoles",
+                                "redshift:ModifyClusterParameterGroup",
+                                "redshift:ModifyCluster",
+                                "redshift:RebootCluster",
+                                "redshift:GetClusterCredentials",
+                                "redshift-data:ExecuteStatement",
+                                "redshift-data:ListDatabases"
                             ],
                             "Resource": [
                                 {
@@ -598,6 +630,9 @@
                 },
                 "ConfigureS3LoggingRestart": {
                     "Ref": "ConfigureS3LoggingRestart"
+                },
+                "ConfigureNetwork": {
+                    "Ref": "ConfigureNetwork"
                 }
             }
         },
@@ -692,6 +727,7 @@
         },
         "InboundPrimaryRule": {
             "Type": "AWS::EC2::SecurityGroupIngress",
+            "Condition": "CreateVPCRules",
             "Properties": {
                 "IpProtocol": "tcp",
                 "Description": {
@@ -722,6 +758,7 @@
         },
         "InboundSecondaryRule": {
             "Type": "AWS::EC2::SecurityGroupIngress",
+            "Condition": "CreateVPCRules",
             "Properties": {
                 "IpProtocol": "tcp",
                 "Description": {

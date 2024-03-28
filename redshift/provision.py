@@ -118,7 +118,7 @@ def ensure_cluster_state(cluster):
     logger.info("Publicly accessible status is '%s'. ", instance["PubliclyAccessible"])
 
 
-def ensure_valid_cluster(cluster):
+def ensure_valid_cluster(cluster, ConfigureNetwork):
     try:
         instances = redshift_client.describe_clusters(ClusterIdentifier=cluster)[
             "Clusters"
@@ -130,7 +130,7 @@ def ensure_valid_cluster(cluster):
             ) from err
         raise err
     instance = instances[0]
-    if not instance["PubliclyAccessible"]:
+    if not instance["PubliclyAccessible"] and ConfigureNetwork:
         raise DataException(
             "Cluster must be publicly available. Update the cluster configurations (https://aws.amazon.com/premiumsupport/knowledge-center/redshift-cluster-private-public/) and try again."
         )
@@ -328,7 +328,7 @@ def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
 
 
 SKIP_DB = [
-    "awsdatacatalog"
+    "awsdatacatalog",
     # database for AWS Glue Data Catalog is a preview feature - https://app.shortcut.com/select-star/story/57903
     # contact sales if you need to activate AWS Glue Data Catalog support
 ]
@@ -357,6 +357,7 @@ def handler(event, context):
         dbUser = properties["DbUser"]
         configureS3Logging = properties["ConfigureS3Logging"] == "true"
         configureS3LoggingRestart = properties["ConfigureS3LoggingRestart"] == "true"
+        ConfigureNetwork = properties["ConfigureNetwork"] == "true"
 
         ensure_cluster_state(cluster)
 
@@ -392,7 +393,9 @@ def handler(event, context):
                 event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
             )
         else:
-            security_group_id, endpoint_port = ensure_valid_cluster(cluster)
+            security_group_id, endpoint_port = ensure_valid_cluster(
+                cluster, ConfigureNetwork
+            )
             logger.info("Ćluster validated successfully")
 
             ensure_iam_role(cluster, role)
