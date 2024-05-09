@@ -1,4 +1,4 @@
-# E2E tests for CloudFormation template for AWS Glue integration
+# E2E tests for CloudFormation template for AWS QuickSight integration
 
 These tests are intended to verify the E2E of the CloudFormation template. During their operation, the infrastructure is created and then the CloudFormation stack is created.
 
