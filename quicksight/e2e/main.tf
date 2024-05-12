@@ -4,7 +4,7 @@ variable "region" {
 }
 
 variable "name" {
-  default = "test-e2e-glue"
+  default = "test-e2e-quicksight"
   type    = string
 }
 
@@ -32,10 +32,10 @@ resource "aws_s3_bucket_ownership_controls" "cloudformation-bucket" {
 resource "aws_s3_object" "cloudformation-object" {
   bucket = aws_s3_bucket.cloudformation-bucket.id
 
-  key    = "SelectStarGlue.json"
-  source = "${path.module}/../SelectStarGlue.json"
+  key    = "SelectStarQuickSight.json"
+  source = "${path.module}/../SelectStarQuickSight.json"
 
-  etag = filemd5("${path.module}/../SelectStarGlue.json")
+  etag = filemd5("${path.module}/../SelectStarQuickSight.json")
 }
 
 locals {
@@ -54,7 +54,7 @@ resource "random_id" "master-identifier" {
 module "stack-master" {
   source = "../terraform"
 
-  # make sure it matches example in /glue/terraform/README.md
+  # make sure it matches example in /quicksight/terraform/README.md
   external_id   = local.external_id
   iam_principal = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
 

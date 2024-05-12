@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  default     = "selectstar-glue"
+  default     = "selectstar-quicksight"
   description = "AWS CloudFormation stack prefix name"
 }
 
@@ -23,6 +23,6 @@ variable "iam_principal" {
 
 variable "template_url" {
   type        = string
-  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/glue/SelectStarGlue.json"
+  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/quicksight/SelectStarQuickSight.json"
   description = "The URL of CloudFormation Template used to provisioning integration. Don't change it unless you really know what you are doing."
 }

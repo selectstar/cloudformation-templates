@@ -1,0 +1,96 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Stack to enable integration Select Star with QuickSight",
+    "Parameters": {
+        "ExternalId": {
+            "Description": "The Select Star external ID to authenticate your AWS account. Do not change or share this.",
+            "MinLength": "1",
+            "Type": "String"
+        },
+        "IamPrincipal": {
+            "Description": "The Select Star IAM principal which has permission to your AWS account. Do not change this.",
+            "MinLength": "1",
+            "Type": "String"
+        }
+    },
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Read-only. Do not change this."
+                    },
+                    "Parameters": [
+                        "ExternalId",
+                        "IamPrincipal"
+                    ]
+                }
+            ]
+        }
+    },
+    "Resources": {
+        "CrossAccountRolePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "quicksight:List*",
+                                "quicksight:Describe*"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                },
+                "PolicyName": "EnableSelectStar",
+                "Roles": [
+                    {
+                        "Ref": "CrossAccountRole"
+                    }
+                ]
+            }
+        },
+        "CrossAccountRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": {
+                                    "Ref": "IamPrincipal"
+                                }
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Condition": {
+                                "StringEquals": {
+                                    "sts:ExternalId": {
+                                        "Ref": "ExternalId"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "Outputs": {
+        "RoleArn": {
+            "Value": {
+                "Fn::GetAtt": [
+                    "CrossAccountRole",
+                    "Arn"
+                ]
+            },
+            "Description": "The ARN value of the Cross-Account Role with IAM read-only permissions. Add this ARN value to Select Star."
+        }
+    }
+}

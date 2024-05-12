@@ -6,6 +6,7 @@ CloudFormation Templates to configure Select Star integrations with services in 
 * [AWS Redshift](./redshift)
 * [AWS Glue](./glue)
 * [AWS Aurora PostgreSQL](./aurora-postgresql)
+* [AWS QuickSight](./quicksight)
 
 Feel free to ask if you have any concerns.
 
