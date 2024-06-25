@@ -172,13 +172,11 @@ def ensure_logging_enabled(cluster, configureS3Logging, bucket):
         ClusterIdentifier=cluster,
     )
     logger.info("Logging status: %s", logging_status)
-    if logging_status["LoggingEnabled"]:  # eg. user already configured s3 logging
-        if "BucketName" in logging_status:  # eg. use custom s3 bucket active
+    logging_bucket = None
+    # eg. user already configured logging (S3 or CW)
+    if logging_status["LoggingEnabled"]:
+        if "BucketName" in logging_status:  # use S3 logging
             logging_bucket = logging_status["BucketName"]
-        else:  # eg. user have CloudWatch as destination activated
-            raise DataException(
-                "Configure S3 logging failed. Another destination of logging active."
-            )
     elif configureS3Logging:
         logger.info("Enable logging required.")
         redshift_client.enable_logging(
@@ -445,7 +443,7 @@ def handler(event, context):
                 context,
                 cfnresponse.SUCCESS,
                 {
-                    "LoggingBucket": logging_bucket,
+                    "LoggingBucket": logging_bucket or bucket or "dummy-bucket",
                     "EndpointPort": endpoint_port,
                     "SecurityGroupId": security_group_id,
                 },
