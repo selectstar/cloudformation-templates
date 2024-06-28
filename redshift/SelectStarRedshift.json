@@ -58,7 +58,7 @@
                 "true",
                 "false"
             ],
-            "Description": "If true and S3 logging disabled then the Redshift cluster configuration can be changed to enable S3 logging. It is recommended to set the value \"true\"."
+            "Description": "If true and logging disabled then the Redshift cluster configuration can be changed to enable S3 logging. It is recommended to set the value \"true\"."
         },
         "ConfigureS3LoggingRestart": {
             "Type": "String",
@@ -363,6 +363,28 @@
                                     ]
                                 }
                             ]
+                        },
+                        {
+                            "Action": [
+                                "logs:Get*",
+                                "logs:List*",
+                                "logs:StartQuery",
+                                "logs:StopQuery",
+                                "logs:Describe*",
+                                "logs:FilterLogEvents"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": {
+                                "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/redshift/cluster/${Cluster}/*"
+                            }
+                        },
+                        {
+                            "Action": [
+                                "logs:GetQueryResults",
+                                "logs:DescribeLogGroups"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": "arn:aws:logs:*:*:log-group::log-stream:"
                         }
                     ]
                 },
@@ -797,15 +819,6 @@
                 ]
             },
             "Description": "The ARN value of the Cross-Account Role with IAM read-only permissions. Add this ARN value to Select Star."
-        },
-        "LoggingBucket": {
-            "Value": {
-                "Fn::GetAtt": [
-                    "LambdaProvision",
-                    "LoggingBucket"
-                ]
-            },
-            "Description": "The bucket name which stores Redshift logs."
         }
     }
 }
