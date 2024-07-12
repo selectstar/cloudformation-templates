@@ -327,6 +327,7 @@ def ensure_cluster_restarted(cluster, configureS3LoggingRestart):
 
 SKIP_DB = [
     "awsdatacatalog",
+    "sys:internal",
     # database for AWS Glue Data Catalog is a preview feature - https://app.shortcut.com/select-star/story/57903
     # contact sales if you need to activate AWS Glue Data Catalog support
 ]

@@ -532,7 +532,24 @@
                                     ]
                                 }
                             ]
-                        },
+                        }
+                    ]
+                },
+                "PolicyName": "EnableSelectStarProvisioning",
+                "Roles": [
+                    {
+                        "Ref": "LambdaRole"
+                    }
+                ]
+            }
+        },
+        "LambdaRoleBucketPolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Condition": "CreateS3Bucket",
+            "Properties": {
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
                         {
                             "Effect": "Allow",
                             "Action": "*",
@@ -564,7 +581,7 @@
                         }
                     ]
                 },
-                "PolicyName": "EnableSelectStarProvisioning",
+                "PolicyName": "EnableSelectStarBucket",
                 "Roles": [
                     {
                         "Ref": "LambdaRole"
