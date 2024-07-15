@@ -10,7 +10,7 @@ variable "name" {
 
 variable "configure_network" { ## Flag for test case
   default = true
-  type = bool
+  type    = bool
 }
 
 data "aws_availability_zones" "available" {}
@@ -125,10 +125,29 @@ module "stack-master" {
   external_id           = "X"
   iam_principal         = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
   configure_network     = var.configure_network
-  template_url = local.template_url
+  template_url          = local.template_url
 
   depends_on = [
     aws_redshift_cluster.e2e
+  ]
+}
+
+module "stack-configurationless" {
+  source = "../terraform"
+
+  cluster_identifier           = aws_redshift_cluster.e2e.cluster_identifier
+  provisioning_user            = aws_redshift_cluster.e2e.master_username
+  provisioning_database        = aws_redshift_cluster.e2e.database_name
+  # for already configured cluster, we may skip the logging configuration
+  configure_s3_logging         = false
+  configure_s3_logging_restart = false
+  external_id                  = "X"
+  iam_principal                = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+  configure_network            = var.configure_network
+  template_url                 = local.template_url
+
+  depends_on = [
+    module.stack-master
   ]
 }
 
