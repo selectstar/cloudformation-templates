@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation template to process RDS Database Activity Streams using Kinesis, Lambda, and Firehose.
+
+Parameters:
+  KinesisStreamARN:
+    Description: >-
+      The ARN of the Kinesis stream where RDS Database Activity Streams are
+      delivered.
+    MinLength: '1'
+    Type: String
+    AllowedPattern: 'arn:aws:kinesis:[\w-]+:\d{12}:stream/[\w-]+'
+  KmsKeyARN:
+    Description: >-
+      The ARN of the KMS key used for encryption of RDS Database Activity Streams.
+    MinLength: '1'
+    Type: String
+    AllowedPattern: 'arn:aws:kms:[\w-]+:\d{12}:key/[\w-]+'
+  ExternalId:
+    Description: >-
+      The Select Star external ID to authenticate your AWS account. Do not
+      change or share this.
+    MinLength: '1'
+    Type: String
+  IamPrincipal:
+    Description: >-
+      The Select Star IAM principal which has permission to your AWS account. Do
+      not change this.
+    MinLength: '1'
+    Type: String
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: AWS RDS configuration
+        Parameters:
+          - KinesisStreamARN
+      - Label:
+          default: Read-only. Do not change this.
+        Parameters:
+          - ExternalId
+          - IamPrincipal
+    ParameterLabels:
+      KinesisStreamARN:
+        default: Kinesis stream ARN
+Resources:
+  # S3 Bucket to store transformed data (query logs)
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Role for Lambda function for Firehose transformation
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+      - PolicyName: decrypt
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource:
+                Ref: KmsKeyARN
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  # Log group and stream for Firehose logging
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: "/aws/kinesisfirehose/${AWS::StackName}/DeliveryStream"
+
+  LogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName:
+        Ref: LogGroup
+      LogStreamName: delivery
+
+  # IAM Role for Firehose delivery
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehosePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Allow Kinesis Data Firehose to read from the specific Kinesis Stream
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListStreams
+                Resource:
+                  Fn::Sub: "${KinesisStreamARN}/*"
+
+              # Allow Kinesis Data Firehose to write to the specific S3 bucket
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - Fn::GetAtt: [ S3Bucket, Arn ]
+                  - Fn::Join:
+                      - /
+                      - - Fn::GetAtt: [ S3Bucket, Arn ]
+                        - '*'
+
+  # Lambda Function to process Kinesis Stream data
+  ProcessKinesisDataLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: python3.12
+      Timeout: 60
+      # TODO: add decryption & filtering of the Kinesis data
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              print(event)
+              return {'records': event['Records']}
+
+  # Kinesis Data Firehose to deliver data to S3
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName:
+        Ref: AWS::StackName
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: "${KinesisStreamARN}"
+        RoleARN: !GetAtt FirehoseRole.Arn
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !GetAtt S3Bucket.Arn
+        Prefix: "processed/!{timestamp:yyyy}/!{timestamp:MM}/!{timestamp:dd}/!{timestamp:HH}/"
+        BufferingHints:
+          IntervalInSeconds: 900
+          SizeInMBs: 5
+        CompressionFormat: UNCOMPRESSED
+        RoleARN: !GetAtt FirehoseRole.Arn
+      ProcessingConfiguration:
+        Enabled: true
+        Processors:
+          - Type: Lambda
+            Parameters:
+              - ParameterName: LambdaArn
+                ParameterValue: !GetAtt ProcessKinesisDataLambda.Arn
+              - ParameterName: BufferIntervalInSeconds
+                ParameterValue: "900"
+              - ParameterName: BufferSizeInMBs
+                ParameterValue: "5"
+      CloudWatchLoggingOptions:
+        Enabled: true
+        LogGroupName:
+          Ref: LogGroup
+        LogStreamName:
+          Ref: LogStream
+  CrossAccountRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        # Allow the Select Star to read from the S3 bucket
+        - Effect: Allow
+          Action:
+            - s3:GetBucketLocation
+            - s3:GetObject
+            - s3:ListBucket
+            - s3:ListBucketMultipartUploads
+          Resource:
+            - Fn::GetAtt: [ S3Bucket, Arn ]
+            - Fn::Join:
+                - /
+                - - Fn::GetAtt: [ S3Bucket, Arn ]
+                  - '*'
+      PolicyName: EnableSelectStar
+      Roles:
+      - Ref: CrossAccountRole
+  CrossAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+              Ref: IamPrincipal
+          Action:
+          - sts:AssumeRole
+          Condition:
+            StringEquals:
+              sts:ExternalId:
+                Ref: ExternalId
+Outputs:
+  RoleArn:
+    Value:
+      Fn::GetAtt:
+      - CrossAccountRole
+      - Arn
+    Description: The ARN value of the Cross-Account Role with IAM read-only permissions.
+      Add this ARN value to Select Star.
+  S3BucketName:
+    Value: !Ref S3Bucket
+    Description: "S3 Bucket where transformed data will be stored"
