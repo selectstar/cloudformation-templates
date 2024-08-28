@@ -7,6 +7,7 @@ CloudFormation Templates to configure Select Star integrations with services in 
 * [AWS Glue](./glue)
 * [AWS Aurora PostgreSQL](./aurora-postgresql)
 * [AWS QuickSight](./quicksight)
+* [AWS RDS Oracle / AWS RDS Microsoft SQL Server](./oracle)
 
 Feel free to ask if you have any concerns.
 
