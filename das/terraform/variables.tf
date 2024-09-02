@@ -1,6 +1,6 @@
 variable "name_prefix" {
   type        = string
-  default     = "selectstar-oracle"
+  default     = "selectstar-das"
   description = "AWS CloudFormation stack prefix name"
 }
 
@@ -46,6 +46,6 @@ variable "disable_rollback" {
 
 variable "template_url" {
   type        = string
-  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/oracle/SelectStarOracle.json"
+  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/das/SelectStarDAS.json"
   description = "The URL of CloudFormation Template used to provisioning integration. Don't change it unless you really know what you are doing."
 }

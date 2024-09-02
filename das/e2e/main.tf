@@ -4,7 +4,7 @@ variable "region" {
 }
 
 variable "name" {
-  default = "test-e2e-oracle"
+  default = "test-e2e-das"
   type    = string
 }
 

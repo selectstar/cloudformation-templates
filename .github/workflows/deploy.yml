@@ -64,7 +64,7 @@ jobs:
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
       - name: Deploy Oracle
-        working-directory: './oracle'
+        working-directory: './das'
         run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
