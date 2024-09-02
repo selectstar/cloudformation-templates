@@ -12,15 +12,43 @@ data "aws_availability_zones" "available" {}
 
 data "aws_caller_identity" "current" {}
 
+resource "random_id" "this" {
+  byte_length = 4
+}
+
+# Uncomment to use test resources
+# resource "aws_kinesis_stream" "this" {
+#   name             = "minimal-kinesis-stream-${random_id.this.hex}"
+#   shard_count      = 1
+#   retention_period = 24 # Minimum allowed retention
+
+#   tags = {
+#     Name = "${var.name}-kinesis-stream"
+#   }
+# }
+
+# resource "aws_kms_key" "this" {
+#   description = "Minimal KMS Key for temporary use"
+
+#   deletion_window_in_days = 7 # Minimum allowed to make it more disposable
+# }
+
+locals {
+  external_id = "external-id-${random_id.this.hex}"
+}
+
 module "stack-master" {
   source = "../terraform"
 
   # make sure it matches example in /quicksight/terraform/README.md
-  external_id   = "X"
+  external_id   = local.external_id
   iam_principal = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-  # TODO: create them on-demand
-  KinesisStreamARN = "arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-UP7H5HCH5M6GDWPOIZJ4ZFJQNY"
-  KmsKeyARN = "arn:aws:kms:us-east-2:792169733636:key/e6a87da6-b7fd-44d9-aa21-66bcec829832"
+  # Uncomment to use test resources
+  # kinesis_stream_arn = aws_kinesis_stream.this.arn
+  # kms_key_arn        = aws_kms_key.this.arn
+  # Use real resources to verify data transformation effectively
+  kinesis_stream_arn = "arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-UP7H5HCH5M6GDWPOIZJ4ZFJQNY"
+  kms_key_arn        = "arn:aws:kms:us-east-2:792169733636:key/e6a87da6-b7fd-44d9-aa21-66bcec829832"
 
   template_url = local.template_url
 }
@@ -33,11 +61,11 @@ resource "null_resource" "cluster" {
   # Make sure that assuming role success
   triggers = {
     role_arn    = module.stack-master.role_arn
-    external_id = module.stack-master.external_id
+    external_id = local.external_id
   }
 
   provisioner "local-exec" {
     # min durations = 900
-    command = "aws sts assume-role --role-arn ${module.stack-master.role_arn} --role-session-name test-e2e --duration-seconds 900 --external-id ${module.stack-master.external_id}"
+    command = "aws sts assume-role --role-arn ${module.stack-master.role_arn} --role-session-name test-e2e --duration-seconds 900 --external-id ${local.external_id}"
   }
 }

@@ -1,14 +1,10 @@
 resource "random_id" "master-identifier" {
   keepers = {
     prefix     = var.name_prefix
-    identifier = var.cluster_identifier
   }
   byte_length = 8
 }
 
-data "aws_redshift_cluster" "redshift" {
-  cluster_identifier = var.cluster_identifier
-}
 
 resource "aws_cloudformation_stack" "stack-master" {
   name = "${var.name_prefix}-${random_id.master-identifier.hex}"
@@ -16,8 +12,8 @@ resource "aws_cloudformation_stack" "stack-master" {
   disable_rollback = var.disable_rollback
 
   parameters = {
-    KinesisStreamARN = var.KinesisStreamARN
-    KmsKeyARN        = var.KmsKeyARN
+    KinesisStreamARN = var.kinesis_stream_arn
+    KmsKeyARN        = var.kms_key_arn
     IamPrincipal     = var.iam_principal
     ExternalId       = var.external_id
   }

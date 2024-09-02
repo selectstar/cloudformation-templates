@@ -116,8 +116,15 @@ Resources:
                   - kinesis:DescribeStream
                   - kinesis:ListStreams
                 Resource:
-                  Fn::Sub: "${KinesisStreamARN}/*"
-
+                  - Fn::Sub: "${KinesisStreamARN}/*"
+                  - Fn::Sub: "${KinesisStreamARN}"
+              # Allow Kinesis Data Firehose to transform data using AWS Lambda
+              - Effect: "Allow"
+                Action:
+                  - "lambda:InvokeFunction"
+                  - "lambda:GetFunctionConfiguration"
+                Resource:
+                  - Fn::GetAtt: [ProcessKinesisDataLambda, Arn]
               # Allow Kinesis Data Firehose to write to the specific S3 bucket
               - Effect: Allow
                 Action:
@@ -139,7 +146,8 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.lambda_handler
-      Role: !GetAtt LambdaExecutionRole.Arn
+      Role:
+        Fn::GetAtt: LambdaExecutionRole.Arn
       Runtime: python3.12
       Timeout: 60
       # TODO: add decryption & filtering of the Kinesis data
@@ -159,33 +167,39 @@ Resources:
         Ref: AWS::StackName
       DeliveryStreamType: KinesisStreamAsSource
       KinesisStreamSourceConfiguration:
-        KinesisStreamARN: "${KinesisStreamARN}"
-        RoleARN: !GetAtt FirehoseRole.Arn
+        KinesisStreamARN:
+          Ref: KinesisStreamARN
+        RoleARN:
+          Fn::GetAtt: FirehoseRole.Arn
       ExtendedS3DestinationConfiguration:
-        BucketARN: !GetAtt S3Bucket.Arn
+        BucketARN:
+          Fn::GetAtt: S3Bucket.Arn
         Prefix: "processed/!{timestamp:yyyy}/!{timestamp:MM}/!{timestamp:dd}/!{timestamp:HH}/"
+        ErrorOutputPrefix: errors/
         BufferingHints:
           IntervalInSeconds: 900
-          SizeInMBs: 5
+          SizeInMBs: 1
         CompressionFormat: UNCOMPRESSED
-        RoleARN: !GetAtt FirehoseRole.Arn
-      ProcessingConfiguration:
-        Enabled: true
-        Processors:
-          - Type: Lambda
-            Parameters:
-              - ParameterName: LambdaArn
-                ParameterValue: !GetAtt ProcessKinesisDataLambda.Arn
-              - ParameterName: BufferIntervalInSeconds
-                ParameterValue: "900"
-              - ParameterName: BufferSizeInMBs
-                ParameterValue: "5"
-      CloudWatchLoggingOptions:
-        Enabled: true
-        LogGroupName:
-          Ref: LogGroup
-        LogStreamName:
-          Ref: LogStream
+        RoleARN:
+          Fn::GetAtt: FirehoseRole.Arn
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName:
+            Ref: LogGroup
+          LogStreamName:
+            Ref: LogStream
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue:
+                    Fn::GetAtt: ProcessKinesisDataLambda.Arn
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: "900"
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: "1"
   CrossAccountRolePolicy:
     Type: AWS::IAM::Policy
     Properties:
@@ -233,5 +247,6 @@ Outputs:
     Description: The ARN value of the Cross-Account Role with IAM read-only permissions.
       Add this ARN value to Select Star.
   S3BucketName:
-    Value: !Ref S3Bucket
+    Value:
+      Ref: S3Bucket
     Description: "S3 Bucket where transformed data will be stored"

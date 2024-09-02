@@ -1,4 +1,4 @@
-# CloudFormation template for Redshift integration
+# CloudFormation template for Database Activity Stream integration
 
 ## Usage
 

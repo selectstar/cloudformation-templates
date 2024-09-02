@@ -1,22 +1,22 @@
 variable "name_prefix" {
   type        = string
-  default     = "selectstar-redshift"
+  default     = "selectstar-oracle"
   description = "AWS CloudFormation stack prefix name"
 }
 
-variable "KinesisStreamARN" {
+variable "kinesis_stream_arn" {
   type        = string
   validation {
-    condition     = can(regex("^arn:aws:kinesis:", var.iam_principal))
+    condition     = can(regex("^arn:aws:kinesis:", var.kinesis_stream_arn))
     error_message = "Invalid AWS Kinesis stream. You must enter a valid ARN."
   }
 }
 
-variable "KmsKeyARN" {
+variable "kms_key_arn" {
   type        = string
   nullable    = false
   validation {
-    condition     = can(regex("^arn:aws:kms:", var.iam_principal))
+    condition     = can(regex("^arn:aws:kms:", var.kms_key_arn))
     error_message = "Invalid AWS KMS key. You must enter a valid ARN."
   }
 }
@@ -36,4 +36,16 @@ variable "external_id" {
   type        = string
   nullable    = false
   description = "The Select Star external ID to authenticate your AWS account. It is unique for each data source and it is available in adding new data source form."
+}
+
+variable "disable_rollback" {
+  type = bool
+  default = true
+  description = "Set to false to enable rollback of the stack if stack creation failed. "
+}
+
+variable "template_url" {
+  type        = string
+  default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/oracle/SelectStarOracle.json"
+  description = "The URL of CloudFormation Template used to provisioning integration. Don't change it unless you really know what you are doing."
 }
