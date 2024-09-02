@@ -6,10 +6,10 @@ resource "aws_s3_bucket" "cloudformation-bucket" {
 resource "aws_s3_object" "cloudformation-object" {
   bucket = aws_s3_bucket.cloudformation-bucket.id
 
-  key    = "SelectStarOracle.json"
-  content = jsonencode(yamldecode(file("${path.module}/../SelectStarOracle.yaml")))
+  key    = "SelectStarDAS.json"
+  content = jsonencode(yamldecode(file("${path.module}/../SelectStarDAS.yaml")))
 
-  etag = filemd5("${path.module}/../SelectStarOracle.yaml")
+  etag = filemd5("${path.module}/../SelectStarDAS.yaml")
 }
 
 locals {

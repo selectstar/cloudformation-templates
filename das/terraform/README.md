@@ -62,6 +62,7 @@ No modules.
 | <a name="input_kinesis_stream_arn"></a> [kinesis\_stream\_arn](#input\_kinesis\_stream\_arn) | n/a | `string` | n/a | yes |
 | <a name="input_kms_key_arn"></a> [kms\_key\_arn](#input\_kms\_key\_arn) | n/a | `string` | n/a | yes |
 | <a name="input_name_prefix"></a> [name\_prefix](#input\_name\_prefix) | AWS CloudFormation stack prefix name | `string` | `"selectstar-das"` | no |
+| <a name="input_rds_resource_id"></a> [rds\_resource\_arn](#input\_rds\_resource\_arn) | The RDS resource ARN that you want to integrate with Select Star. It is available in the RDS console. | `string` | n/a | yes |
 | <a name="input_template_url"></a> [template\_url](#input\_template\_url) | The URL of CloudFormation Template used to provisioning integration. Don't change it unless you really know what you are doing. | `string` | `"https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/das/SelectStarDAS.json"` | no |
 
 ## Outputs

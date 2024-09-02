@@ -15,6 +15,10 @@ Parameters:
     MinLength: '1'
     Type: String
     AllowedPattern: 'arn:aws:kms:[\w-]+:\d{12}:key/[\w-]+'
+  RdsResourceId:
+    Description: The ARN of the RDS instance or cluster producing the logs.
+    MinLength: '1'
+    Type: String
   ExternalId:
     Description: >-
       The Select Star external ID to authenticate your AWS account. Do not
@@ -55,7 +59,7 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  # IAM Role for Lambda function for Firehose transformation
+  # IAM Role for Lambda function for Firehose transformation and for provisioning copy Lambda function
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -67,6 +71,21 @@ Resources:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
+      - PolicyName: deploy
+        PolicyDocument:
+          Statement:
+          - Effect: "Allow"
+            Action: "s3:GetObject"
+            Resource: "arn:aws:s3:::cf-templates-pp3cips1o7jf-us-east-2/das/deployment-package.zip"
+          - Effect: "Allow"
+            Action:
+            - "s3:PutObject"
+            - "S3:DeleteObject"
+            Resource:
+              Fn::Join:
+                - /
+                - - Fn::GetAtt: [ S3Bucket, Arn ]
+                  - 'deployment-package.zip'
       - PolicyName: decrypt
         PolicyDocument:
           Statement:
@@ -77,6 +96,7 @@ Resources:
                 Ref: KmsKeyARN
       ManagedPolicyArns:
       - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      - "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 
   # Log group and stream for Firehose logging
   LogGroup:
@@ -124,7 +144,11 @@ Resources:
                   - "lambda:InvokeFunction"
                   - "lambda:GetFunctionConfiguration"
                 Resource:
-                  - Fn::GetAtt: [ProcessKinesisDataLambda, Arn]
+                  - Fn::GetAtt: [ ProcessKinesisDataLambda, Arn ]
+                  - Fn::Join:
+                      - /
+                      - - Fn::GetAtt: [ ProcessKinesisDataLambda, Arn ]
+                        - '$LATEST'
               # Allow Kinesis Data Firehose to write to the specific S3 bucket
               - Effect: Allow
                 Action:
@@ -140,25 +164,122 @@ Resources:
                       - /
                       - - Fn::GetAtt: [ S3Bucket, Arn ]
                         - '*'
+              # Allow Kinesis Data Firehose to write to CloudWatch Logs
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                Resource:
+                  - Fn::GetAtt: [ LogGroup, Arn ]
+                  - Fn::Join:
+                      - /
+                      - - Fn::GetAtt: [ LogGroup, Arn ]
+                        - '*'
+  # Create Lambda function to copy objects from Select Star-managed S3 bucket to local S3 bucket
+  # Enables deployment of the Lambda function in any region
+  LambdaCopyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Timeout: 300
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          import cfnresponse
+          import boto3
+
+          logging.basicConfig(
+              format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
+              datefmt="%Y-%m-%d:%H:%M:%S",
+              level=logging.INFO,
+          )
+
+          logger = logging.getLogger(__name__)
+          logger.setLevel(logging.INFO)
+
+          s3_client = boto3.client("s3")
+
+
+          def handler(event, context):
+              logger.info(json.dumps(event))
+              try:
+                  properties = event["ResourceProperties"]
+                  src_bucket = properties["srcBucket"]
+                  src_key = properties["srcKey"]
+                  dst_bucket = properties["dstBucket"]
+                  dst_key = properties["dstKey"]
+                  if event["RequestType"] == "Delete":
+                      s3_client.delete_object(
+                          Bucket=dst_bucket,
+                          Key=dst_key,
+                      )
+                      cfnresponse.send(
+                          event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
+                      )
+                  else:
+                      s3_client.copy_object(
+                          Bucket=dst_bucket,
+                          CopySource=f"{src_bucket}/{src_key}",
+                          Key=dst_key,
+                      )
+                      return cfnresponse.send(
+                          event,
+                          context,
+                          cfnresponse.SUCCESS,
+                          {
+                              "result": "Copy complete",
+                              "Copy": {"S3Bucket": dst_bucket, "S3Key": dst_key},
+                          },
+                          reason="Create complete",
+                      )
+              except Exception as e:
+                  logging.error(e)
+                  return cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.FAILED,
+                      {},
+                      reason="Something failed. See the details in CloudWatch Log Stream: {}".format(
+                          context.log_stream_name
+                      ),
+                  )
+
+      Handler: index.handler
+      Role:
+        Fn::GetAtt: LambdaExecutionRole.Arn
+      Runtime: python3.12
+      TracingConfig:
+        Mode: Active
+  # invoke the Lambda function to copy objects
+  LambdaCopy:
+    Type: Custom::LambdaCopy
+    Version: '1.0'
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - LambdaCopyFunction
+        - Arn
+      srcBucket: cf-templates-pp3cips1o7jf-us-east-2
+      srcKey: das/deployment-package.zip
+      dstBucket:
+        Ref: S3Bucket
+      dstKey: deployment-package.zip
 
   # Lambda Function to process Kinesis Stream data
   ProcessKinesisDataLambda:
     Type: AWS::Lambda::Function
     Properties:
-      Handler: index.lambda_handler
+      Handler: selectstar_das_processor.handler.lambda_handler
       Role:
         Fn::GetAtt: LambdaExecutionRole.Arn
       Runtime: python3.12
+      Architectures: [arm64]
       Timeout: 60
-      # TODO: add decryption & filtering of the Kinesis data
       Code:
-        ZipFile: |
-          import json
-
-          def lambda_handler(event, context):
-              print(event)
-              return {'records': event['Records']}
-
+        Fn::GetAtt: [LambdaCopy, Copy]
+      Environment:
+        Variables:
+          rds_resource_id:
+            Ref: RdsResourceId
   # Kinesis Data Firehose to deliver data to S3
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
@@ -177,7 +298,7 @@ Resources:
         Prefix: "processed/!{timestamp:yyyy}/!{timestamp:MM}/!{timestamp:dd}/!{timestamp:HH}/"
         ErrorOutputPrefix: errors/
         BufferingHints:
-          IntervalInSeconds: 900
+          IntervalInSeconds: 13
           SizeInMBs: 1
         CompressionFormat: UNCOMPRESSED
         RoleARN:
@@ -197,7 +318,7 @@ Resources:
                   ParameterValue:
                     Fn::GetAtt: ProcessKinesisDataLambda.Arn
                 - ParameterName: BufferIntervalInSeconds
-                  ParameterValue: "900"
+                  ParameterValue: "13"
                 - ParameterName: BufferSizeInMBs
                   ParameterValue: "1"
   CrossAccountRolePolicy:
@@ -222,6 +343,7 @@ Resources:
       PolicyName: EnableSelectStar
       Roles:
       - Ref: CrossAccountRole
+
   CrossAccountRole:
     Type: AWS::IAM::Role
     Properties:

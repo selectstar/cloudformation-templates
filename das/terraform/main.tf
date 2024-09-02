@@ -14,6 +14,7 @@ resource "aws_cloudformation_stack" "stack-master" {
   parameters = {
     KinesisStreamARN = var.kinesis_stream_arn
     KmsKeyARN        = var.kms_key_arn
+    RdsResourceId    = var.rds_resource_id
     IamPrincipal     = var.iam_principal
     ExternalId       = var.external_id
   }

@@ -1,5 +1,5 @@
 variable "region" {
-  default     = "eu-central-1"
+  default     = "us-east-2"
   description = "AWS region"
 }
 
@@ -47,8 +47,9 @@ module "stack-master" {
   # kinesis_stream_arn = aws_kinesis_stream.this.arn
   # kms_key_arn        = aws_kms_key.this.arn
   # Use real resources to verify data transformation effectively
-  kinesis_stream_arn = "arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-UP7H5HCH5M6GDWPOIZJ4ZFJQNY"
-  kms_key_arn        = "arn:aws:kms:us-east-2:792169733636:key/e6a87da6-b7fd-44d9-aa21-66bcec829832"
+  kinesis_stream_arn = "arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-ZQO7M43PGGUXJEZVYSALTO76KA"
+  kms_key_arn        = "arn:aws:kms:us-east-2:792169733636:key/f319545f-a0d4-4bfc-896f-5d37fe921ffb"
+  rds_resource_id   = "arn:aws:rds:us-east-2:792169733636:db:oracle-test-data"
 
   template_url = local.template_url
 }
