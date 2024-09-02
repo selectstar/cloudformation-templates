@@ -21,12 +21,14 @@ from aws_encryption_sdk.identifiers import WrappingAlgorithm, EncryptionKeyType
 DAS_EVENT_TYPE = "DatabaseActivityMonitoringRecord"
 
 REGION_NAME = os.environ["AWS_REGION"]
+KMS_KEY_ARN = os.environ["kms_key_arn"]
 RDS_RESOURCE_ID = os.environ["rds_resource_id"]
 
 enc_client = aws_encryption_sdk.EncryptionSDKClient(
     commitment_policy=CommitmentPolicy.REQUIRE_ENCRYPT_ALLOW_DECRYPT
 )
-kms = boto3.client("kms", region_name=REGION_NAME)
+kms_region = KMS_KEY_ARN.split(":")[3]
+kms = boto3.client("kms", region_name=kms_region)
 
 disallowed_events = {
     "oracle": {

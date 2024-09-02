@@ -27,7 +27,7 @@ variable "rds_resource_id" {
   description = "The RDS resource ID that you want to integrate with Select Star. It is available in the RDS console."
 
   validation {
-    condition     = can(regex("^[A-Z0-9\\-]+$", var.rds_resource_id))
+    condition     = can(regex("^[a-z]+\\-[A-Z0-9]+$", var.rds_resource_id))
     error_message = "Invalid RDS resource ID. You must enter a valid resource ID. Are you sure you didn't use resource ARN? "
   }
 }
