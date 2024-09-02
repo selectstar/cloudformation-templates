@@ -15,6 +15,7 @@ resource "aws_cloudformation_stack" "stack-master" {
   parameters = {
     ExternalId   = var.external_id
     IamPrincipal = var.iam_principal
+    LogGroupName = var.log_group_name
   }
 
   capabilities = ["CAPABILITY_IAM"]

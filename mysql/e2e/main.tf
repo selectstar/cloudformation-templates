@@ -51,13 +51,17 @@ resource "random_id" "master-identifier" {
   byte_length = 8
 }
 
+resource "aws_cloudwatch_log_group" "log_group" {
+  name = "/aws/rds/instance/${var.name}/${random_string.random.result}"
+}
+
 module "stack-master" {
   source = "../terraform"
 
   # make sure it matches example in /mysql/terraform/README.md
   external_id   = local.external_id
   iam_principal = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-
+  log_group_name = aws_cloudwatch_log_group.log_group.name
   template_url = local.template_url
 }
 

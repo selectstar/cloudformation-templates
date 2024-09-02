@@ -21,6 +21,12 @@ variable "iam_principal" {
   }
 }
 
+variable "log_group_name" {
+  type = string
+  nullable = false
+  description = "The name of the log group to enable for Select Star. Example: /aws/rds/instance/dev-mysql8/general"
+}
+
 variable "template_url" {
   type        = string
   default     = "https://select-star-production-cloudformation.s3.us-east-2.amazonaws.com/mysql/SelectStarMySQL.json"
