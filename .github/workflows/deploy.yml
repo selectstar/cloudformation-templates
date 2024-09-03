@@ -63,6 +63,11 @@ jobs:
         run: ./deploy.sh "$BUCKET_NAME"
         env:
           BUCKET_NAME: ${{ inputs.aws-bucket-name }}
+      - name: Deploy RDS Database Activity Stream
+        working-directory: './das'
+        run: ./deploy.sh "$BUCKET_NAME"
+        env:
+          BUCKET_NAME: ${{ inputs.aws-bucket-name }}
       - name: Deploy MySQL
         working-directory: './mysql'
         run: ./deploy.sh "$BUCKET_NAME"

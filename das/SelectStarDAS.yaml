@@ -1,0 +1,376 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation template to process RDS Database Activity Streams using Kinesis, Lambda, and Firehose.
+
+Parameters:
+  KinesisStreamARN:
+    Description: >-
+      The ARN of the Kinesis stream where RDS Database Activity Streams are
+      delivered.
+    MinLength: '1'
+    Type: String
+    AllowedPattern: 'arn:aws:kinesis:[\w-]+:\d{12}:stream/[\w-]+'
+  KmsKeyARN:
+    Description: >-
+      The ARN of the KMS key used for encryption of RDS Database Activity Streams.
+    MinLength: '1'
+    Type: String
+    AllowedPattern: 'arn:aws:kms:[\w-]+:\d{12}:key/[\w-]+'
+  RdsResourceId:
+    Description: The ARN of the RDS instance or cluster producing the logs.
+    MinLength: '1'
+    Type: String
+  ExternalId:
+    Description: >-
+      The Select Star external ID to authenticate your AWS account. Do not
+      change or share this.
+    MinLength: '1'
+    Type: String
+  IamPrincipal:
+    Description: >-
+      The Select Star IAM principal which has permission to your AWS account. Do
+      not change this.
+    MinLength: '1'
+    Type: String
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: AWS RDS configuration
+        Parameters:
+          - KinesisStreamARN
+      - Label:
+          default: Read-only. Do not change this.
+        Parameters:
+          - ExternalId
+          - IamPrincipal
+    ParameterLabels:
+      KinesisStreamARN:
+        default: Kinesis stream ARN
+Resources:
+  # S3 Bucket to store transformed data (query logs)
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # IAM Role for Lambda function for Firehose transformation and for provisioning copy Lambda function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+      - PolicyName: deploy
+        PolicyDocument:
+          Statement:
+          - Effect: "Allow"
+            Action: "s3:GetObject"
+            Resource: "arn:aws:s3:::cf-templates-pp3cips1o7jf-us-east-2/das/deployment-package.zip"
+          - Effect: "Allow"
+            Action:
+            - "s3:PutObject"
+            - "S3:DeleteObject"
+            Resource:
+              Fn::Join:
+                - /
+                - - Fn::GetAtt: [ S3Bucket, Arn ]
+                  - 'deployment-package.zip'
+      - PolicyName: decrypt
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - kms:Decrypt
+              Resource:
+                Ref: KmsKeyARN
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      - "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+
+  # Log group and stream for Firehose logging
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Fn::Sub: "/aws/kinesisfirehose/${AWS::StackName}/DeliveryStream"
+
+  LogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName:
+        Ref: LogGroup
+      LogStreamName: delivery
+
+  # IAM Role for Firehose delivery
+  FirehoseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehosePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Allow Kinesis Data Firehose to read from the specific Kinesis Stream
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListStreams
+                Resource:
+                  - Fn::Sub: "${KinesisStreamARN}/*"
+                  - Fn::Sub: "${KinesisStreamARN}"
+              # Allow Kinesis Data Firehose to transform data using AWS Lambda
+              - Effect: "Allow"
+                Action:
+                  - "lambda:InvokeFunction"
+                  - "lambda:GetFunctionConfiguration"
+                Resource:
+                  - Fn::GetAtt: [ ProcessKinesisDataLambda, Arn ]
+                  - Fn::Join:
+                      - /
+                      - - Fn::GetAtt: [ ProcessKinesisDataLambda, Arn ]
+                        - '$LATEST'
+              # Allow Kinesis Data Firehose to write to the specific S3 bucket
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - Fn::GetAtt: [ S3Bucket, Arn ]
+                  - Fn::Join:
+                      - /
+                      - - Fn::GetAtt: [ S3Bucket, Arn ]
+                        - '*'
+              # Allow Kinesis Data Firehose to write to CloudWatch Logs
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                Resource:
+                  - Fn::GetAtt: [ LogGroup, Arn ]
+                  - Fn::Join:
+                      - /
+                      - - Fn::GetAtt: [ LogGroup, Arn ]
+                        - '*'
+  # Create Lambda function to copy objects from Select Star-managed S3 bucket to local S3 bucket
+  # Enables deployment of the Lambda function in any region
+  LambdaCopyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Timeout: 300
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          import cfnresponse
+          import boto3
+
+          logging.basicConfig(
+              format="%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
+              datefmt="%Y-%m-%d:%H:%M:%S",
+              level=logging.INFO,
+          )
+
+          logger = logging.getLogger(__name__)
+          logger.setLevel(logging.INFO)
+
+          s3_client = boto3.client("s3")
+
+
+          def handler(event, context):
+              logger.info(json.dumps(event))
+              try:
+                  properties = event["ResourceProperties"]
+                  src_bucket = properties["srcBucket"]
+                  src_key = properties["srcKey"]
+                  dst_bucket = properties["dstBucket"]
+                  dst_key = properties["dstKey"]
+                  if event["RequestType"] == "Delete":
+                      s3_client.delete_object(
+                          Bucket=dst_bucket,
+                          Key=dst_key,
+                      )
+                      cfnresponse.send(
+                          event, context, cfnresponse.SUCCESS, {"Data": "Delete complete"}
+                      )
+                  else:
+                      s3_client.copy_object(
+                          Bucket=dst_bucket,
+                          CopySource=f"{src_bucket}/{src_key}",
+                          Key=dst_key,
+                      )
+                      return cfnresponse.send(
+                          event,
+                          context,
+                          cfnresponse.SUCCESS,
+                          {
+                              "result": "Copy complete",
+                              "Copy": {"S3Bucket": dst_bucket, "S3Key": dst_key},
+                          },
+                          reason="Create complete",
+                      )
+              except Exception as e:
+                  logging.error(e)
+                  return cfnresponse.send(
+                      event,
+                      context,
+                      cfnresponse.FAILED,
+                      {},
+                      reason="Something failed. See the details in CloudWatch Log Stream: {}".format(
+                          context.log_stream_name
+                      ),
+                  )
+
+      Handler: index.handler
+      Role:
+        Fn::GetAtt: LambdaExecutionRole.Arn
+      Runtime: python3.12
+      TracingConfig:
+        Mode: Active
+  # invoke the Lambda function to copy objects
+  LambdaCopy:
+    Type: Custom::LambdaCopy
+    Version: '1.0'
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+        - LambdaCopyFunction
+        - Arn
+      srcBucket: cf-templates-pp3cips1o7jf-us-east-2
+      srcKey: das/deployment-package.zip
+      dstBucket:
+        Ref: S3Bucket
+      dstKey: deployment-package.zip
+
+  # Lambda Function to process Kinesis Stream data
+  ProcessKinesisDataLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: selectstar_das_processor.handler.lambda_handler
+      Role:
+        Fn::GetAtt: LambdaExecutionRole.Arn
+      Runtime: python3.12
+      Architectures: [arm64]
+      Timeout: 60
+      Code:
+        Fn::GetAtt: [LambdaCopy, Copy]
+      Environment:
+        Variables:
+          rds_resource_id:
+            Ref: RdsResourceId
+          kms_key_arn:
+            Ref: KmsKeyARN
+  # Kinesis Data Firehose to deliver data to S3
+  KinesisFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName:
+        Ref: AWS::StackName
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN:
+          Ref: KinesisStreamARN
+        RoleARN:
+          Fn::GetAtt: FirehoseRole.Arn
+      ExtendedS3DestinationConfiguration:
+        BucketARN:
+          Fn::GetAtt: S3Bucket.Arn
+        Prefix: "processed/!{timestamp:yyyy}/!{timestamp:MM}/!{timestamp:dd}/!{timestamp:HH}/"
+        ErrorOutputPrefix: errors/
+        BufferingHints:
+          IntervalInSeconds: 900
+          SizeInMBs: 1
+        CompressionFormat: UNCOMPRESSED
+        RoleARN:
+          Fn::GetAtt: FirehoseRole.Arn
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName:
+            Ref: LogGroup
+          LogStreamName:
+            Ref: LogStream
+        ProcessingConfiguration:
+          Enabled: true
+          Processors:
+            - Type: Lambda
+              Parameters:
+                - ParameterName: LambdaArn
+                  ParameterValue:
+                    Fn::GetAtt: ProcessKinesisDataLambda.Arn
+                - ParameterName: BufferIntervalInSeconds
+                  ParameterValue: "900"
+                - ParameterName: BufferSizeInMBs
+                  ParameterValue: "1"
+  CrossAccountRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        # Allow the Select Star to read from the S3 bucket
+        - Effect: Allow
+          Action:
+            - s3:GetBucketLocation
+            - s3:GetObject
+            - s3:ListBucket
+            - s3:ListBucketMultipartUploads
+          Resource:
+            - Fn::GetAtt: [ S3Bucket, Arn ]
+            - Fn::Join:
+                - /
+                - - Fn::GetAtt: [ S3Bucket, Arn ]
+                  - '*'
+      PolicyName: EnableSelectStar
+      Roles:
+      - Ref: CrossAccountRole
+
+  CrossAccountRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS:
+              Ref: IamPrincipal
+          Action:
+          - sts:AssumeRole
+          Condition:
+            StringEquals:
+              sts:ExternalId:
+                Ref: ExternalId
+Outputs:
+  RoleArn:
+    Value:
+      Fn::GetAtt:
+      - CrossAccountRole
+      - Arn
+    Description: The ARN value of the Cross-Account Role with IAM read-only permissions.
+      Add this ARN value to Select Star.
+  S3BucketName:
+    Value:
+      Ref: S3Bucket
+    Description: "S3 Bucket where transformed data will be stored"

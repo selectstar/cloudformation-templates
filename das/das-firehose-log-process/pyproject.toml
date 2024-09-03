@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "selectstar_das_processor"
+version = "0.0.1"
+description = "A lambda function to decrypt and pre-process DAS events for later ingest"
+authors = ["Michael Gregson <mike@getselectstar.com>"]
+license = "All Rights Reserved"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+boto3 = "^1.34.145"
+aws-encryption-sdk = "^3.3.0"
+cryptography = "42.0.8"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.1"
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib", "-rP"]
+pythonpath = "."
+filterwarnings = [
+    "ignore:.*datetime.datetime.utcnow.*:DeprecationWarning"
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
