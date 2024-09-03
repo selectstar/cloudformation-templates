@@ -8,7 +8,7 @@ variable "kinesis_stream_arn" {
   type        = string
   validation {
     condition     = can(regex("^arn:aws:kinesis:", var.kinesis_stream_arn))
-    error_message = "Invalid AWS Kinesis stream. You must enter a valid ARN."
+    error_message = "Invalid AWS Kinesis stream. You must enter a valid ARN. Example: arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-ZQO7M43PGGUXJEZVYSALTO76KA"
   }
 }
 
@@ -17,14 +17,14 @@ variable "kms_key_arn" {
   nullable    = false
   validation {
     condition     = can(regex("^arn:aws:kms:", var.kms_key_arn))
-    error_message = "Invalid AWS KMS key. You must enter a valid ARN."
+    error_message = "Invalid AWS KMS key. You must enter a valid ARN. Example: arn:aws:kms:us-east-2:792169733636:key/f319545f-a0d4-4bfc-896f-5d37fe921ffb"
   }
 }
 
 variable "rds_resource_id" {
   type        = string
   nullable    = false
-  description = "The RDS resource ID that you want to integrate with Select Star. It is available in the RDS console."
+  description = "The RDS resource ID that you want to integrate with Select Star. It is available in the RDS console. Example: db-ZQO7M43PGGUXJEZVYSALTO76KA"
 
   validation {
     condition     = can(regex("^[a-z]+\\-[A-Z0-9]+$", var.rds_resource_id))

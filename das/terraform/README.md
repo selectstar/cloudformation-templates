@@ -12,8 +12,10 @@ Example snippet usage:
 module "stack" {
   source = "github.com/selectstar/cloudformation-templates//das/terraform"
 
-  kinesis_stream_arn = "arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-xxxx"
-  kms_key_arn        = "arn:aws:kms:us-east-2:792169733636:key/xxxx"
+  kinesis_stream_arn = "arn:aws:kinesis:us-east-2:792169733636:stream/aws-rds-das-db-ZQO7M43PGGUXJEZVYSALTO76KA"
+  kms_key_arn        = "arn:aws:kms:us-east-2:792169733636:key/f319545f-a0d4-4bfc-896f-5d37fe921ffb"
+  rds_resource_id    = "db-ZQO7M43PGGUXJEZVYSALTO76KA"
+
   external_id        = "X" # available in add new data source form
   iam_principal      = "X" # available in add new data source form
 }

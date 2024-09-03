@@ -280,6 +280,8 @@ Resources:
         Variables:
           rds_resource_id:
             Ref: RdsResourceId
+          kms_key_arn:
+            Ref: KmsKeyARN
   # Kinesis Data Firehose to deliver data to S3
   KinesisFirehose:
     Type: AWS::KinesisFirehose::DeliveryStream
@@ -298,7 +300,7 @@ Resources:
         Prefix: "processed/!{timestamp:yyyy}/!{timestamp:MM}/!{timestamp:dd}/!{timestamp:HH}/"
         ErrorOutputPrefix: errors/
         BufferingHints:
-          IntervalInSeconds: 13
+          IntervalInSeconds: 900
           SizeInMBs: 1
         CompressionFormat: UNCOMPRESSED
         RoleARN:
@@ -318,7 +320,7 @@ Resources:
                   ParameterValue:
                     Fn::GetAtt: ProcessKinesisDataLambda.Arn
                 - ParameterName: BufferIntervalInSeconds
-                  ParameterValue: "13"
+                  ParameterValue: "900"
                 - ParameterName: BufferSizeInMBs
                   ParameterValue: "1"
   CrossAccountRolePolicy:
