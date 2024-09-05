@@ -134,6 +134,7 @@ def filter_database_activity_events(das_event):
     filtered = len(das_event["databaseActivityEventList"])
 
     if len(das_event["databaseActivityEventList"]) < 1:
+        print("Dropping record set with no valid events (eg. only hearthbeat).")
         return None
 
     return das_event, received, filtered
@@ -144,6 +145,7 @@ def lambda_handler(event, _context):
     Process a batch of DAS events.
     """
     output = []
+    print(f"Received {len(event['records'])} records.")
     for record in event["records"]:
         data = base64.b64decode(record["data"])
         record_data = json.loads(data)

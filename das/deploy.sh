@@ -19,3 +19,5 @@ python update.py "$BUCKET" "$PREFIX/deployment-package.zip"
 # Upload files
 aws s3 cp ./SelectStarDAS.json "s3://$BUCKET/$PREFIX/" --acl public-read
 aws s3 cp ./das-firehose-log-process/handler.zip "s3://$BUCKET/$PREFIX/deployment-package.zip" --acl public-read
+
+# aws lambda update-function-code --function-name SelectStarDASIntegrationS-ProcessKinesisDataLambda-... --zip-file fileb://das-firehose-log-process/handler.zip --publish
