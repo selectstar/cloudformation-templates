@@ -127,15 +127,17 @@ def filter_database_activity_events(das_event):
             "Dropping record set with non-matching structure. Fields:", das_event.keys()
         )
         return None
-
+    received = len(das_event["databaseActivityEventList"])
     das_event["databaseActivityEventList"] = [
         e for e in das_event["databaseActivityEventList"] if is_allowed_event(e)
     ]
+    filtered = len(das_event["databaseActivityEventList"])
 
     if len(das_event["databaseActivityEventList"]) < 1:
+        print("Dropping record set with no valid events (eg. only hearthbeat).")
         return None
 
-    return das_event
+    return das_event, received, filtered
 
 
 def lambda_handler(event, _context):
@@ -143,6 +145,7 @@ def lambda_handler(event, _context):
     Process a batch of DAS events.
     """
     output = []
+    print(f"Received {len(event['records'])} records.")
     for record in event["records"]:
         data = base64.b64decode(record["data"])
         record_data = json.loads(data)
@@ -172,11 +175,14 @@ def lambda_handler(event, _context):
 
         event = json.loads(plaintext)
         pruned_event = filter_database_activity_events(event)
+
         if pruned_event is None:
             output_record = {"recordId": record["recordId"], "result": "Dropped"}
         else:
+            das_event, received, filtered = pruned_event
+            print(f"Received {received} events, filtered to {filtered} events.")
             plain_event = zlib.compress(
-                json.dumps(pruned_event).encode("utf-8"), wbits=zlib.MAX_WBITS + 16
+                json.dumps(das_event).encode("utf-8"), wbits=zlib.MAX_WBITS + 16
             )
             packed_event = {
                 "databaseActivityEvents": base64.b64encode(plain_event).decode("utf-8")
