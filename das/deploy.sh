@@ -3,6 +3,8 @@ set -eux
 BUCKET="${1-cf-templates-pp3cips1o7jf-us-east-2}"
 PREFIX="${2-das}"
 
+pip install poetry # ensure that poetry is installed
+
 # Convert YAML to JSON
 cat ./SelectStarDAS.yaml |  yq e -o=json > ./SelectStarDAS.json
 

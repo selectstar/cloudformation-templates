@@ -29,9 +29,12 @@ on:
         description: URL for Slack webhook notification
 jobs:
   deploy:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: configure aws credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
