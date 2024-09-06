@@ -31,6 +31,14 @@ Parameters:
       not change this.
     MinLength: '1'
     Type: String
+  BufferTime:
+    Description: >-
+      The time in seconds that Firehose buffers incoming data before delivering
+      it to S3.
+    Type: Number
+    Default: 900
+    MinValue: 15
+    MaxValue: 900
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
@@ -38,6 +46,8 @@ Metadata:
           default: AWS RDS configuration
         Parameters:
           - KinesisStreamARN
+          - KmsKeyARN
+          - RdsResourceId
       - Label:
           default: Read-only. Do not change this.
         Parameters:
@@ -300,7 +310,8 @@ Resources:
         Prefix: "processed/!{timestamp:yyyy}/!{timestamp:MM}/!{timestamp:dd}/!{timestamp:HH}/"
         ErrorOutputPrefix: errors/
         BufferingHints:
-          IntervalInSeconds: 900
+          IntervalInSeconds:
+            Ref: BufferTime
           SizeInMBs: 1
         CompressionFormat: UNCOMPRESSED
         RoleARN:
@@ -320,9 +331,12 @@ Resources:
                   ParameterValue:
                     Fn::GetAtt: ProcessKinesisDataLambda.Arn
                 - ParameterName: BufferIntervalInSeconds
-                  ParameterValue: "900"
+                  ParameterValue:
+                    Fn::Sub: "${BufferTime}"
                 - ParameterName: BufferSizeInMBs
                   ParameterValue: "1"
+            - Type: "AppendDelimiterToRecord"
+              Parameters": []
   CrossAccountRolePolicy:
     Type: AWS::IAM::Policy
     Properties:
